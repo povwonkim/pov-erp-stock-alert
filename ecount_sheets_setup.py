@@ -30,39 +30,82 @@ SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
 ]
 
-# 탭 이름 + 헤더 행. 순서가 곧 시트 안 탭 순서.
+# 오프라인 재고 관리 대상 창고 — 확정 4개 (2026-07-28). POP-UP/orer.archive/OTS/OY/POV는
+# 이 시스템의 범위에서 완전히 제외(집계에도 포함 안 함). 온라인(MXN 계열) 창고는 별도 시스템.
+OFFLINE_WAREHOUSES = ["POINT OF VIEW(법인)", "THE HYUNDAI SEOUL", "시시호시-수원점", "신세계 강남-피숀"]
+
+# 탭 이름 → {note: 상단 배너(① 이 탭이 뭘 하는 곳인지 한 줄 설명 + ② 갱신 시점), headers: 헤더 행}.
+# 컬럼 순서 규칙(2026-07-28 통일): 식별자(브랜드/품목코드/품목명 등) → 상태(+우선순위) →
+# 나머지 지표 → 조치방안/메모(맨 끝). 상태가 있는 탭은 전부 조치방안도 같이 둔다(둘은 항상 짝).
+# "수집일시/업데이트일시/일자"처럼 매 행 반복되는 배치 기준시각은 컬럼에 넣지 않고 note 배너로
+# 뺀다(단, 일별재고이력의 "날짜"는 매 행이 실제로 다른 값이라 예외 — 그대로 컬럼 유지).
 # 3층 구조 (카페24 온라인 대조 시스템과 동일한 패턴을 오프라인에 적용, DOI 기반 우선순위 포함):
-#   1층 RAW(원본 수집) → 2층 재고관리(DOI·상태판정) → 3층 결과물(용도별 뷰)
-TABS: dict[str, list[str]] = {
-    # 1층 RAW
-    "RAW_재고현황": ["창고코드", "창고명", "품목코드", "품목명", "사이즈", "재고수량", "수집일시"],
-    "RAW_판매현황": ["일자", "브랜드", "품목코드", "품명", "수량", "단가", "공급가액", "부가세", "합계", "적요", "창고명", "담당자", "수집일시"],
-    "품목마스터": ["품목코드", "품목명", "브랜드", "브랜드코드", "갱신일"],
-    # 2층 재고관리 — 온라인 시스템의 DOI(재고소진예상일수) 기반 우선순위 체계를 그대로 적용.
-    # 상태값: 위험(DOI≤5)/주의(DOI 5~10)/재고소량·판매없음(재고1~5&7일판매0)/
+#   1층 RAW(원본 수집) → 2층 일별재고이력(DOI·상태판정 엔진) → 3층 결과물(용도별 뷰)
+TABS: dict[str, dict] = {
+    # 1층 RAW — 사람이 직접 보는 탭이 아니라, 아래 계산의 원재료.
+    "RAW_재고현황": {
+        "note": "📋 이카운트 재고API 원본 스냅샷 (사람이 보는 탭 아님, 계산용 원본) · 🕒 기준일시: 매일 자동 갱신",
+        "headers": ["창고코드", "창고명", "품목코드", "품목명", "사이즈", "재고수량"],
+    },
+    "RAW_판매현황": {
+        "note": "📋 이카운트 판매현황 이메일 원본 (사람이 보는 탭 아님, 계산용 원본) · 🕒 기준일(전일): 매일 자동 갱신",
+        "headers": ["브랜드", "품목코드", "품명", "수량", "단가", "공급가액", "부가세", "합계", "적요", "창고명", "담당자"],
+    },
+    "품목마스터": {
+        "note": "📋 품목코드↔브랜드↔조달유형 매핑표 · 🕒 신상품 추가 시에만 사람이 가끔 수동 갱신",
+        "headers": ["품목코드", "품목명", "브랜드", "브랜드코드", "조달유형", "리드타임(일)", "갱신일"],
+    },
+    # 2층 일별재고이력 — 3층의 모든 결과물이 여기서 계산돼 나오는 엔진. 사람이 매일 볼 필요는
+    # 없지만, 왜 그런 상태/조치가 나왔는지 근거를 확인하고 싶을 때 여기를 본다.
+    # 상태값: 위험/주의(조달유형별 리드타임 기준, 아래 참고)/재고소량·판매없음(재고1~5&7일판매0)/
     #        품절-신규(0~9일째)/품절-지속(10~29일째)/품절-장기(30일+)/초과주문(재고<0)/정상
-    "일별변동계산": [
-        "날짜", "브랜드", "품목코드", "품목명", "전일재고", "재고수량", "출고수량", "입고수량(계산)",
-        "최근7일판매량", "최근90일판매량", "DOI", "상태", "품절경과일", "우선순위",
-    ],
+    # 위험/주의 임계값: 자체제작 DOI≤35일/35~49일 · 국내사입 DOI≤7일/7~14일 · 해외수입 DOI≤21일/21~35일
+    "일별재고이력": {
+        "note": "📋 품목별 일별 재고·입출고·DOI·상태 계산 이력 — 3층 결과물 탭들이 전부 여기서 계산됨 · 🕒 매일 품목당 한 행씩 자동 누적",
+        "headers": [
+            "날짜", "브랜드", "품목코드", "품목명", "상태", "우선순위",
+            "전일재고", "재고수량", "출고수량", "입고수량(계산)",
+            "최근7일판매량", "최근90일판매량", "DOI", "품절경과일", "조치방안",
+        ],
+    },
     # 3층 결과물 (용도별 뷰) — 온라인의 "위험/주의/재고소량·판매없음/신규품절/지속품절" 리스트에 대응.
     # 정렬: 위험·주의는 DOI 오름차순, 품절-지속/장기는 최근90일판매량 내림차순(부활가치 큰 것 우선).
-    "디자인팀_발주필요": [
-        "우선순위", "상태", "브랜드", "품목코드", "품목명", "재고수량", "DOI",
-        "최근7일판매량", "최근90일판매량", "품절경과일", "조치방안", "메모", "업데이트일시",
-    ],
-    "관리팀_전체재고": [
-        "브랜드", "품목코드", "품목명", "창고명", "재고수량", "전일재고", "입고수량(계산)",
-        "출고수량", "DOI", "상태", "업데이트일시",
-    ],
+    # 재고수량 = 오프라인 4개 창고 합계 (창고별 상세는 관리팀_전체재고에서 확인 — 디자인팀은
+    # "만들어야 하는가"만 판단하면 되므로 창고별 상세 불필요).
+    "디자인팀_발주필요": {
+        "note": "📋 디자인팀용 — 지금 발주(제작)해야 하는 품목만 골라서 보여줌 (전체 재고는 관리팀_전체재고 참고) · 🕒 마지막 갱신: 매일 자동",
+        "headers": [
+            "브랜드", "품목코드", "품목명", "조달유형", "상태", "우선순위",
+            "리드타임(일)", "재고수량", "DOI", "최근7일판매량", "최근90일판매량", "품절경과일",
+            "조치방안", "메모",
+        ],
+    },
+    # 이 팀이 국내발주/해외발주/창고이동을 모두 판단하는 실제 운영 마스터 시트 — 가장 중요.
+    # 창고별 수량을 컬럼으로 나란히 둬서 창고이동 필요 여부(A매장 과잉·B매장 품절)를 한 행에서
+    # 바로 확인 가능하게 한다. 조달유형별로 DOI 임계값이 다르므로 리드타임을 컬럼으로 명시.
+    "관리팀_전체재고": {
+        "note": "📋 관리팀용 마스터 시트 — 오프라인 전체 재고를 창고별로 보고 국내발주/해외발주/창고이동을 판단 · 🕒 마지막 갱신: 매일 자동",
+        "headers": [
+            "브랜드", "품목코드", "품목명", "조달유형", "상태",
+            "리드타임(일)", *OFFLINE_WAREHOUSES, "총재고",
+            "전일재고", "입고수량(계산)", "출고수량", "최근7일판매량", "DOI",
+            "조치방안", "메모",
+        ],
+    },
     # 재고 과잉 + 장기 미출고 (판매 없음, 재고만 쌓임 — 디자인팀_발주필요와 반대 축)
-    "악성재고": ["브랜드", "품목코드", "품목명", "재고수량", "최근판매일", "미판매경과일", "입고단가", "재고평가금액", "조치방안", "메모"],
+    "악성재고": {
+        "note": "📋 재고 과잉 + 오래 안 팔린 품목 — 프로모션/폐기 판단용 (반대 축: 디자인팀_발주필요) · 🕒 마지막 갱신: 매일 자동",
+        "headers": ["브랜드", "품목코드", "품목명", "재고수량", "최근판매일", "미판매경과일", "입고단가", "재고평가금액", "조치방안", "메모"],
+    },
     # 품절-장기 중에서도 최근90일판매량=0(부활가치 없음)인 것만. 판매량 있는 장기품절은
     # 디자인팀_발주필요의 "재입고 골든타임"으로 남긴다. 재발주/제작/단종 최종 판단용.
-    "악성품절": [
-        "브랜드", "품목코드", "품목명", "재고수량", "최근판매일", "미판매경과일",
-        "최근입고일", "미입고경과일", "최근90일판매량", "조치방안", "메모",
-    ],
+    "악성품절": {
+        "note": "📋 재고 없이 오래 방치된 품목(부활가치 없음) — 재발주/단종 최종 판단용 · 🕒 마지막 갱신: 매일 자동",
+        "headers": [
+            "브랜드", "품목코드", "품목명", "재고수량", "최근판매일", "미판매경과일",
+            "최근입고일", "미입고경과일", "최근90일판매량", "조치방안", "메모",
+        ],
+    },
 }
 
 
@@ -99,13 +142,64 @@ def add_missing_tabs(sheets_service, spreadsheet_id: str, have: set[str]) -> lis
 
 
 def write_headers(sheets_service, spreadsheet_id: str, tab_names: list[str]) -> None:
+    """1행에 note 배너, 2행에 실제 헤더. 데이터는 3행부터 시작하는 게 전제."""
     if not tab_names:
         return
-    data = [{"range": f"'{name}'!A1", "values": [TABS[name]]} for name in tab_names]
+    data = []
+    for name in tab_names:
+        spec = TABS[name]
+        data.append({"range": f"'{name}'!A1", "values": [[spec["note"]]]})
+        data.append({"range": f"'{name}'!A2", "values": [spec["headers"]]})
     sheets_service.spreadsheets().values().batchUpdate(
         spreadsheetId=spreadsheet_id,
         body={"valueInputOption": "RAW", "data": data},
     ).execute()
+
+    # 1행을 헤더 개수만큼 병합 + 굵게(가독성) — 이미 병합돼 있으면 무시하고 넘어간다.
+    meta = sheets_service.spreadsheets().get(
+        spreadsheetId=spreadsheet_id, fields="sheets(properties(sheetId,title))"
+    ).execute()
+    id_by_title = {s["properties"]["title"]: s["properties"]["sheetId"] for s in meta["sheets"]}
+    requests = []
+    for name in tab_names:
+        ncols = max(len(TABS[name]["headers"]), 1)
+        sheet_id = id_by_title[name]
+        requests.append({
+            "mergeCells": {
+                "range": {"sheetId": sheet_id, "startRowIndex": 0, "endRowIndex": 1, "startColumnIndex": 0, "endColumnIndex": ncols},
+                "mergeType": "MERGE_ALL",
+            }
+        })
+        requests.append({
+            "repeatCell": {
+                "range": {"sheetId": sheet_id, "startRowIndex": 0, "endRowIndex": 1},
+                "cell": {"userEnteredFormat": {"textFormat": {"bold": True}, "backgroundColor": {"red": 0.906, "green": 0.933, "blue": 0.933}}},
+                "fields": "userEnteredFormat(textFormat,backgroundColor)",
+            }
+        })
+        requests.append({
+            "repeatCell": {
+                "range": {"sheetId": sheet_id, "startRowIndex": 1, "endRowIndex": 2},
+                "cell": {"userEnteredFormat": {
+                    "backgroundColor": {"red": 0.122, "green": 0.294, "blue": 0.294},
+                    "textFormat": {"bold": True, "foregroundColor": {"red": 1, "green": 1, "blue": 1}},
+                }},
+                "fields": "userEnteredFormat(textFormat,backgroundColor)",
+            }
+        })
+        requests.append({
+            "updateSheetProperties": {
+                "properties": {"sheetId": sheet_id, "gridProperties": {"frozenRows": 2}},
+                "fields": "gridProperties.frozenRows",
+            }
+        })
+    if requests:
+        try:
+            sheets_service.spreadsheets().batchUpdate(
+                spreadsheetId=spreadsheet_id, body={"requests": requests}
+            ).execute()
+        except Exception as e:  # 병합이 기존 데이터와 충돌하는 등 — 헤더 텍스트 자체는 이미 써졌으니 계속 진행
+            print(f"[sheets] 서식 적용 중 일부 실패(무시하고 진행): {e}")
 
 
 def main() -> int:
@@ -129,7 +223,7 @@ def main() -> int:
 
     have = existing_tab_names(sheets_service, spreadsheet_id)
     added = add_missing_tabs(sheets_service, spreadsheet_id, have)
-    # 헤더는 매번 전체 탭 기준으로 동기화한다(1행만 덮어씀, 데이터 행은 안 건드림) —
+    # note/헤더는 매번 전체 탭 기준으로 동기화한다(1~2행만 덮어씀, 3행부터의 데이터는 안 건드림) —
     # TABS의 컬럼 정의가 바뀌었을 때(예: 상태/우선순위 컬럼 추가) 기존 탭도 따라가게.
     write_headers(sheets_service, spreadsheet_id, list(TABS.keys()))
 
