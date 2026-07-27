@@ -171,9 +171,18 @@ def add_missing_tabs(sheets_service, spreadsheet_id: str, have: set[str]) -> lis
 
 
 def write_headers(sheets_service, spreadsheet_id: str, tab_names: list[str]) -> None:
-    """1행에 note 배너, 2행에 실제 헤더. 데이터는 3행부터 시작하는 게 전제."""
+    """1행에 note 배너, 2행에 실제 헤더. 데이터는 3행부터 시작하는 게 전제.
+
+    과거 실행에서 컬럼 수가 더 많았던 적이 있으면 그 잔여 셀이 안 지워지고 남아
+    새 내용과 뒤섞일 수 있어서, 쓰기 전에 1~2행을 넉넉히(Z열까지) 지워둔다.
+    """
     if not tab_names:
         return
+    clear_ranges = [f"'{name}'!A1:Z2" for name in tab_names]
+    sheets_service.spreadsheets().values().batchClear(
+        spreadsheetId=spreadsheet_id, body={"ranges": clear_ranges}
+    ).execute()
+
     data = []
     for name in tab_names:
         spec = TABS[name]
@@ -193,6 +202,12 @@ def write_headers(sheets_service, spreadsheet_id: str, tab_names: list[str]) -> 
     for name in tab_names:
         ncols = max(len(TABS[name]["headers"]), 1)
         sheet_id = id_by_title[name]
+        # 과거 실행에서 다른 컬럼 수로 이미 병합돼 있으면 새 병합과 충돌할 수 있어 먼저 풀어둔다.
+        requests.append({
+            "unmergeCells": {
+                "range": {"sheetId": sheet_id, "startRowIndex": 0, "endRowIndex": 1, "startColumnIndex": 0, "endColumnIndex": 26},
+            }
+        })
         requests.append({
             "mergeCells": {
                 "range": {"sheetId": sheet_id, "startRowIndex": 0, "endRowIndex": 1, "startColumnIndex": 0, "endColumnIndex": ncols},
