@@ -125,9 +125,38 @@ def _load_creds() -> Credentials:
     return creds
 
 
+# 과거 이름 -> 현재 이름. 실행 시 존재하면 새로 만들지 않고 이름만 바꿔서 데이터 유지.
+RENAMED_FROM = {
+    "일별변동계산": "일별재고이력",
+}
+
+
 def existing_tab_names(sheets_service, spreadsheet_id: str) -> set[str]:
     meta = sheets_service.spreadsheets().get(spreadsheetId=spreadsheet_id, fields="sheets.properties.title").execute()
     return {s["properties"]["title"] for s in meta.get("sheets", [])}
+
+
+def rename_legacy_tabs(sheets_service, spreadsheet_id: str, have: set[str]) -> list[tuple[str, str]]:
+    meta = sheets_service.spreadsheets().get(
+        spreadsheetId=spreadsheet_id, fields="sheets(properties(sheetId,title))"
+    ).execute()
+    id_by_title = {s["properties"]["title"]: s["properties"]["sheetId"] for s in meta["sheets"]}
+    requests = []
+    renamed = []
+    for old, new in RENAMED_FROM.items():
+        if old in have and new not in have:
+            requests.append({
+                "updateSheetProperties": {
+                    "properties": {"sheetId": id_by_title[old], "title": new},
+                    "fields": "title",
+                }
+            })
+            renamed.append((old, new))
+    if requests:
+        sheets_service.spreadsheets().batchUpdate(
+            spreadsheetId=spreadsheet_id, body={"requests": requests}
+        ).execute()
+    return renamed
 
 
 def add_missing_tabs(sheets_service, spreadsheet_id: str, have: set[str]) -> list[str]:
@@ -222,6 +251,9 @@ def main() -> int:
     sheets_service = build("sheets", "v4", credentials=creds)
 
     have = existing_tab_names(sheets_service, spreadsheet_id)
+    renamed = rename_legacy_tabs(sheets_service, spreadsheet_id, have)
+    if renamed:
+        have = existing_tab_names(sheets_service, spreadsheet_id)  # 이름 바뀐 뒤 다시 조회
     added = add_missing_tabs(sheets_service, spreadsheet_id, have)
     # note/헤더는 매번 전체 탭 기준으로 동기화한다(1~2행만 덮어씀, 3행부터의 데이터는 안 건드림) —
     # TABS의 컬럼 정의가 바뀌었을 때(예: 상태/우선순위 컬럼 추가) 기존 탭도 따라가게.
@@ -229,6 +261,8 @@ def main() -> int:
 
     url = f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}"
     print(f"[sheets] 대상: {url}")
+    if renamed:
+        print(f"[sheets] 이름 변경된 탭: {', '.join(f'{o} → {n}' for o, n in renamed)}")
     if added:
         print(f"[sheets] 새로 추가된 탭: {', '.join(added)}")
     else:
