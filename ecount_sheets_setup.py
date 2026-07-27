@@ -34,6 +34,45 @@ SCOPES = [
 # 이 시스템의 범위에서 완전히 제외(집계에도 포함 안 함). 온라인(MXN 계열) 창고는 별도 시스템.
 OFFLINE_WAREHOUSES = ["POINT OF VIEW(법인)", "THE HYUNDAI SEOUL", "시시호시-수원점", "신세계 강남-피숀"]
 
+# ---- 서식(색/줄무늬/얼림) — 카페24 온라인 시스템 시트의 시각 스타일(진한 배너/줄무늬/상태색)을
+# 오프라인 시트에도 동일하게 적용한다. ----
+BANNER_BG = {"red": 0.906, "green": 0.933, "blue": 0.933}   # 1행 배너(연한 틸)
+HEADER_BG = {"red": 0.122, "green": 0.294, "blue": 0.294}   # 2행 헤더(진한 틸)
+STRIPE_BG = {"red": 0.980, "green": 0.976, "blue": 0.957}   # 데이터 줄무늬(연한 웜그레이)
+
+SEMANTIC_DANGER_BG = {"red": 0.984, "green": 0.918, "blue": 0.910}
+SEMANTIC_DANGER_FG = {"red": 0.698, "green": 0.227, "blue": 0.180}
+SEMANTIC_WARNING_BG = {"red": 0.984, "green": 0.953, "blue": 0.875}
+SEMANTIC_WARNING_FG = {"red": 0.604, "green": 0.420, "blue": 0.047}
+SEMANTIC_NEUTRAL_BG = {"red": 0.933, "green": 0.933, "blue": 0.918}
+SEMANTIC_NEUTRAL_FG = {"red": 0.455, "green": 0.475, "blue": 0.486}
+SEMANTIC_GOOD_BG = {"red": 0.910, "green": 0.945, "blue": 0.918}
+SEMANTIC_GOOD_FG = {"red": 0.247, "green": 0.478, "blue": 0.333}
+
+# "상태" 컬럼에 부분일치로 색 입히는 규칙 — 문자열들이 서로 겹치지 않아 순서 무관.
+STATUS_COLOR_RULES = [
+    ("초과주문", SEMANTIC_DANGER_BG, SEMANTIC_DANGER_FG),
+    ("위험", SEMANTIC_DANGER_BG, SEMANTIC_DANGER_FG),
+    ("주의", SEMANTIC_WARNING_BG, SEMANTIC_WARNING_FG),
+    ("재고소량", SEMANTIC_NEUTRAL_BG, SEMANTIC_NEUTRAL_FG),
+    ("품절-신규", SEMANTIC_DANGER_BG, SEMANTIC_DANGER_FG),
+    ("품절-지속", SEMANTIC_WARNING_BG, SEMANTIC_WARNING_FG),
+    ("품절-장기", SEMANTIC_NEUTRAL_BG, SEMANTIC_NEUTRAL_FG),
+    ("정상", SEMANTIC_GOOD_BG, SEMANTIC_GOOD_FG),
+]
+
+# 스크롤해도 식별자 컬럼(브랜드/품목코드/품목명 등)이 계속 보이게 얼릴 컬럼 수.
+FREEZE_COLS = {
+    "RAW_재고현황": 4,
+    "RAW_판매현황": 3,
+    "품목마스터": 3,
+    "일별재고이력": 4,
+    "디자인팀_발주필요": 3,
+    "관리팀_전체재고": 3,
+    "악성재고": 3,
+    "악성품절": 3,
+}
+
 # 탭 이름 → {note: 상단 배너(① 이 탭이 뭘 하는 곳인지 한 줄 설명 + ② 갱신 시점), headers: 헤더 행}.
 # 컬럼 순서 규칙(2026-07-28 통일): 식별자(브랜드/품목코드/품목명 등) → 상태(+우선순위) →
 # 나머지 지표 → 조치방안/메모(맨 끝). 상태가 있는 탭은 전부 조치방안도 같이 둔다(둘은 항상 짝).
@@ -193,21 +232,40 @@ def write_headers(sheets_service, spreadsheet_id: str, tab_names: list[str]) -> 
         body={"valueInputOption": "RAW", "data": data},
     ).execute()
 
-    # 1행을 헤더 개수만큼 병합 + 굵게(가독성) — 이미 병합돼 있으면 무시하고 넘어간다.
+    # 기존 서식(병합/조건부서식/줄무늬)을 먼저 깨끗이 지운 뒤에 새로 입힌다 — 재실행할 때마다
+    # 쌓이지 않게. 삭제 대상은 실제 메타데이터에서 조회해서 정확한 ID/인덱스로 지운다.
     meta = sheets_service.spreadsheets().get(
-        spreadsheetId=spreadsheet_id, fields="sheets(properties(sheetId,title))"
+        spreadsheetId=spreadsheet_id,
+        fields="sheets(properties(sheetId,title),conditionalFormats,bandedRanges(bandedRangeId))",
     ).execute()
-    id_by_title = {s["properties"]["title"]: s["properties"]["sheetId"] for s in meta["sheets"]}
-    requests = []
+    by_title = {s["properties"]["title"]: s for s in meta["sheets"]}
+
+    delete_requests = []
     for name in tab_names:
-        ncols = max(len(TABS[name]["headers"]), 1)
-        sheet_id = id_by_title[name]
-        # 과거 실행에서 다른 컬럼 수로 이미 병합돼 있으면 새 병합과 충돌할 수 있어 먼저 풀어둔다.
-        requests.append({
+        sheet = by_title[name]
+        sheet_id = sheet["properties"]["sheetId"]
+        n_rules = len(sheet.get("conditionalFormats", []))
+        # 인덱스가 삭제할 때마다 당겨지므로 뒤에서부터 지운다.
+        for idx in range(n_rules - 1, -1, -1):
+            delete_requests.append({"deleteConditionalFormatRule": {"sheetId": sheet_id, "index": idx}})
+        for banded in sheet.get("bandedRanges", []):
+            delete_requests.append({"deleteBanding": {"bandedRangeId": banded["bandedRangeId"]}})
+        delete_requests.append({
             "unmergeCells": {
                 "range": {"sheetId": sheet_id, "startRowIndex": 0, "endRowIndex": 1, "startColumnIndex": 0, "endColumnIndex": 26},
             }
         })
+    if delete_requests:
+        sheets_service.spreadsheets().batchUpdate(
+            spreadsheetId=spreadsheet_id, body={"requests": delete_requests}
+        ).execute()
+
+    requests = []
+    for name in tab_names:
+        headers = TABS[name]["headers"]
+        ncols = max(len(headers), 1)
+        sheet_id = by_title[name]["properties"]["sheetId"]
+
         requests.append({
             "mergeCells": {
                 "range": {"sheetId": sheet_id, "startRowIndex": 0, "endRowIndex": 1, "startColumnIndex": 0, "endColumnIndex": ncols},
@@ -217,7 +275,7 @@ def write_headers(sheets_service, spreadsheet_id: str, tab_names: list[str]) -> 
         requests.append({
             "repeatCell": {
                 "range": {"sheetId": sheet_id, "startRowIndex": 0, "endRowIndex": 1},
-                "cell": {"userEnteredFormat": {"textFormat": {"bold": True}, "backgroundColor": {"red": 0.906, "green": 0.933, "blue": 0.933}}},
+                "cell": {"userEnteredFormat": {"textFormat": {"bold": True}, "backgroundColor": BANNER_BG}},
                 "fields": "userEnteredFormat(textFormat,backgroundColor)",
             }
         })
@@ -225,7 +283,7 @@ def write_headers(sheets_service, spreadsheet_id: str, tab_names: list[str]) -> 
             "repeatCell": {
                 "range": {"sheetId": sheet_id, "startRowIndex": 1, "endRowIndex": 2},
                 "cell": {"userEnteredFormat": {
-                    "backgroundColor": {"red": 0.122, "green": 0.294, "blue": 0.294},
+                    "backgroundColor": HEADER_BG,
                     "textFormat": {"bold": True, "foregroundColor": {"red": 1, "green": 1, "blue": 1}},
                 }},
                 "fields": "userEnteredFormat(textFormat,backgroundColor)",
@@ -233,10 +291,57 @@ def write_headers(sheets_service, spreadsheet_id: str, tab_names: list[str]) -> 
         })
         requests.append({
             "updateSheetProperties": {
-                "properties": {"sheetId": sheet_id, "gridProperties": {"frozenRows": 2}},
-                "fields": "gridProperties.frozenRows",
+                "properties": {"sheetId": sheet_id, "gridProperties": {"frozenRows": 2, "frozenColumns": FREEZE_COLS.get(name, 0)}},
+                "fields": "gridProperties.frozenRows,gridProperties.frozenColumns",
             }
         })
+        requests.append({
+            "addBanding": {
+                "bandedRange": {
+                    "range": {"sheetId": sheet_id, "startRowIndex": 2, "endRowIndex": 1000, "startColumnIndex": 0, "endColumnIndex": ncols},
+                    "rowProperties": {
+                        "headerColor": {"red": 1, "green": 1, "blue": 1},
+                        "firstBandColor": {"red": 1, "green": 1, "blue": 1},
+                        "secondBandColor": STRIPE_BG,
+                    },
+                }
+            }
+        })
+
+        if "상태" in headers:
+            status_col = headers.index("상태")
+            for substr, bg, fg in STATUS_COLOR_RULES:
+                requests.append({
+                    "addConditionalFormatRule": {
+                        "rule": {
+                            "ranges": [{"sheetId": sheet_id, "startRowIndex": 2, "endRowIndex": 1000,
+                                        "startColumnIndex": status_col, "endColumnIndex": status_col + 1}],
+                            "booleanRule": {
+                                "condition": {"type": "TEXT_CONTAINS", "values": [{"userEnteredValue": substr}]},
+                                "format": {"backgroundColor": bg, "textFormat": {"bold": True, "foregroundColor": fg}},
+                            },
+                        },
+                        "index": 0,
+                    }
+                })
+
+        for qty_col_name in ("재고수량", "총재고"):
+            if qty_col_name in headers:
+                qty_col = headers.index(qty_col_name)
+                requests.append({
+                    "addConditionalFormatRule": {
+                        "rule": {
+                            "ranges": [{"sheetId": sheet_id, "startRowIndex": 2, "endRowIndex": 1000,
+                                        "startColumnIndex": qty_col, "endColumnIndex": qty_col + 1}],
+                            "booleanRule": {
+                                "condition": {"type": "NUMBER_LESS", "values": [{"userEnteredValue": "0"}]},
+                                "format": {"backgroundColor": SEMANTIC_DANGER_BG, "textFormat": {"bold": True, "foregroundColor": SEMANTIC_DANGER_FG}},
+                            },
+                        },
+                        "index": 0,
+                    }
+                })
+
     if requests:
         try:
             sheets_service.spreadsheets().batchUpdate(
