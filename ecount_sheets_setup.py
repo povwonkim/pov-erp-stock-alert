@@ -336,20 +336,14 @@ def write_headers(sheets_service, spreadsheet_id: str, tab_names: list[str]) -> 
         ncols = max(len(headers), 1)
         sheet_id = by_title[name]["properties"]["sheetId"]
 
-        # 배너 3행 — 각 줄을 전체 병합 + 서로 다른 톤(위로 갈수록 진함).
+        # 배너 3행 — 병합은 안 함(컬럼 고정과 충돌하므로). 대신 행 전체(전체 컬럼)에 배경색을
+        # 칠해서 같은 "띠" 모양을 낸다. 텍스트는 A열에만 있고 나머지 칸은 빈 채로 배경만 깔림.
         banner_rows = [
             (0, BANNER1_BG, BANNER_FG_LIGHT, True),
             (1, BANNER2_BG, BANNER_FG_LIGHT, True),
             (2, BANNER3_BG, BANNER3_FG, False),
         ]
         for row_idx, bg, fg, bold in banner_rows:
-            requests.append({
-                "mergeCells": {
-                    "range": {"sheetId": sheet_id, "startRowIndex": row_idx, "endRowIndex": row_idx + 1,
-                              "startColumnIndex": 0, "endColumnIndex": ncols},
-                    "mergeType": "MERGE_ALL",
-                }
-            })
             requests.append({
                 "repeatCell": {
                     "range": {"sheetId": sheet_id, "startRowIndex": row_idx, "endRowIndex": row_idx + 1},
