@@ -32,31 +32,55 @@ from openpyxl import load_workbook
 # ---- 조달유형별 리드타임 (README/ecount_sheets_setup.py와 동일하게 유지) ----
 LEADTIME_BY_TYPE = {"자체제작": 35, "국내사입": 7, "해외수입": 21}
 
-# 실제 POV 자체제작 브랜드로 확정된 것만 (2026-07-27 이카운트 품목그룹2 화면에서 확인).
+# 실제 POV 자체제작 브랜드로 확정된 것만 (2026-07-27~28 이카운트 품목그룹2 화면 + 사용자 확인).
+# POV_application: 판매용은 아니지만(쇼핑백/봉투 등 비품) 재제작 필요 여부를 추적해야 해서
+# 자체제작과 동일하게 관리.
 SELF_MADE_BRANDS = {
     "POV_original", "POV Atelier", "POV x Hello Kitty", "POV x KBP", "POV_한글박물관",
     "POV_collaboration", "POV_inventario", "PRESSPRESS", "PRESSPRESS_collaboration", "양지사",
+    "POV_application",
 }
 
 # 브랜드 원산지(국가코드)와 실제 조달경로가 다른 경우 — 국가코드 기본값보다 우선 적용.
-# 2026-07-28 사용자 확인: PILOT/Midori는 일본 브랜드지만 국내 유통사를 통해 사입.
+# 2026-07-28 사용자 확인.
 MANUAL_OVERRIDES = {
-    "PILOT": "국내사입",
-    "Midori": "국내사입",
-    "KBP": "국내사입",             # KR013 — 국가코드로도 이미 잡히지만 명시적으로 확인됨
-    "GONGJANG(공장)": "국내사입",   # KR050 — 동일
+    "PILOT": "국내사입",             # 일본 브랜드, 국내 유통사 통해 사입
+    "Midori": "국내사입",            # 동일
+    "KBP": "국내사입",               # KR013 — 국가코드로도 이미 잡히지만 명시적으로 확인됨
+    "GONGJANG(공장)": "국내사입",     # KR050 — 동일
+    "BOOK": "국내사입",              # 매입
+    "해외서적": "국내사입",           # 해외 서적이지만 국내에서 매입
+    "VIEWPOINT": "국내사입",
+    "프란츠(FRANZ)": "국내사입",
+    "OTHER": "국내사입",             # 섞여있음 — SKU_OVERRIDES로 예외 처리(아래)
 }
 
-# 숫자 코드(POV 사내 카테고리)인데 SELF_MADE_BRANDS에 없는 것들 — 자동 분류 애매해서
+# 재고 성격이 안 맞거나(대여 서비스 등) 이 시스템에서 아예 다루지 않기로 한 브랜드.
+# 2026-07-28 사용자 확인: 가져오지 않기로 함.
+EXCLUDED_BRANDS = {"ARCHIVE. Object", "PointofView"}
+
+# 브랜드 단위로는 판단 안 되고 품목코드(SKU) 단위로 조달유형이 갈리는 예외.
+# "OTHER" 브랜드 안에 섞여있는 것 중 확인된 것들(2026-07-28).
+SKU_OVERRIDES = {
+    "F-109": "해외수입",
+    "IC005": "해외수입",
+    "IT-VINTAGE-001": "국내사입",
+    "891-10": "국내사입",
+}
+
+# 숫자 코드(POV 사내 카테고리)인데 위 규칙 어디에도 안 걸리는 것들 — 자동 분류 애매해서
 # 사람 확인 전까지 임시로 해외수입(가장 보수적) 기본값을 쓴다. 확인되는 대로 여기 추가.
 AMBIGUOUS_NUMERIC_BRANDS_DEFAULT = "해외수입"
 
 
-def classify(brand: str, brand_code: str) -> tuple[str, bool]:
+def classify(brand: str, brand_code: str, item_code: str = "") -> tuple[str, bool]:
     """(조달유형, 확실함여부) 반환. 확실함=False면 리뷰 대상."""
     brand = (brand or "").strip()
     brand_code = (brand_code or "").strip()
+    item_code = (item_code or "").strip()
 
+    if item_code in SKU_OVERRIDES:
+        return SKU_OVERRIDES[item_code], True
     if brand in SELF_MADE_BRANDS:
         return "자체제작", True
     if brand in MANUAL_OVERRIDES:
@@ -113,48 +137,59 @@ def load_rows(path: Path) -> list[dict]:
     return rows
 
 
-def build_item_master(rows: list[dict]) -> tuple[list[list], dict]:
+def build_item_master(rows: list[dict]) -> tuple[list[list], dict, int]:
     """품목마스터 행(품목마스터 탭 헤더 순서: 품목코드,품목명,브랜드,브랜드코드,조달유형,리드타임(일),갱신일)
-    과 브랜드별 분류 리포트를 만든다."""
+    과 브랜드별 분류 리포트를 만든다. EXCLUDED_BRANDS는 아예 제외한다."""
     today = date.today().isoformat()
-    brand_cache: dict[str, tuple[str, bool]] = {}
     out = []
+    excluded_count = 0
+    brand_stats: dict[str, dict] = {}
+
     for r in rows:
-        key = r["브랜드"]
-        if key not in brand_cache:
-            brand_cache[key] = classify(r["브랜드"], r["브랜드코드"])
-        ptype, certain = brand_cache[key]
+        if r["브랜드"] in EXCLUDED_BRANDS:
+            excluded_count += 1
+            continue
+        ptype, certain = classify(r["브랜드"], r["브랜드코드"], r["품목코드"])
         out.append([
             r["품목코드"], r["품목명"], r["브랜드"], r["브랜드코드"],
             ptype, LEADTIME_BY_TYPE[ptype], today,
         ])
-
-    brand_stats: dict[str, dict] = {}
-    for r in rows:
-        b = r["브랜드"]
-        ptype, certain = brand_cache[b]
-        s = brand_stats.setdefault(b, {"code": r["브랜드코드"], "type": ptype, "certain": certain, "count": 0})
+        s = brand_stats.setdefault(r["브랜드"], {"code": r["브랜드코드"], "types": {}, "certain": True, "count": 0})
         s["count"] += 1
+        s["types"][ptype] = s["types"].get(ptype, 0) + 1
+        if not certain:
+            s["certain"] = False
 
-    return out, brand_stats
+    return out, brand_stats, excluded_count
 
 
-def print_report(brand_stats: dict) -> None:
+def print_report(brand_stats: dict, excluded_count: int) -> None:
     by_type = {}
     for b, s in brand_stats.items():
-        by_type.setdefault(s["type"], []).append((b, s))
+        dominant = max(s["types"], key=s["types"].get)
+        by_type.setdefault(dominant, []).append((b, s))
 
     print("\n[품목마스터] 조달유형별 브랜드/품목 집계:")
     for t in ("자체제작", "국내사입", "해외수입"):
         items = by_type.get(t, [])
         total_skus = sum(s["count"] for _, s in items)
         print(f"  {t}: 브랜드 {len(items)}개, 품목 {total_skus}개")
+    if excluded_count:
+        print(f"  (제외됨: {excluded_count}개 품목 — {', '.join(EXCLUDED_BRANDS)})")
+
+    mixed = [(b, s) for b, s in brand_stats.items() if len(s["types"]) > 1]
+    if mixed:
+        print(f"\n[품목마스터] 브랜드 내 SKU별로 조달유형이 갈리는 것 {len(mixed)}개:")
+        for b, s in mixed:
+            detail = ", ".join(f"{t}:{c}개" for t, c in s["types"].items())
+            print(f"  - {b!r}: {detail}")
 
     ambiguous = [(b, s) for b, s in brand_stats.items() if not s["certain"]]
     if ambiguous:
         print(f"\n[품목마스터] ⚠️ 확인 필요(애매한 숫자코드 브랜드) {len(ambiguous)}개:")
         for b, s in sorted(ambiguous, key=lambda x: -x[1]["count"]):
-            print(f"  - {b!r} (코드 {s['code']}, 품목 {s['count']}개) → 임시: {s['type']}")
+            dominant = max(s["types"], key=s["types"].get)
+            print(f"  - {b!r} (코드 {s['code']}, 품목 {s['count']}개) → 임시: {dominant}")
 
 
 def write_to_sheet(spreadsheet_id: str, rows: list[list]) -> None:
@@ -193,8 +228,8 @@ def main() -> int:
     rows = load_rows(Path(args.source))
     print(f"[품목마스터] {len(rows)}개 품목 로드")
 
-    master_rows, brand_stats = build_item_master(rows)
-    print_report(brand_stats)
+    master_rows, brand_stats, excluded_count = build_item_master(rows)
+    print_report(brand_stats, excluded_count)
 
     if args.report_only or not args.spreadsheet_id:
         print("\n[품목마스터] --report-only 또는 --spreadsheet-id 미지정 — 시트에 쓰지 않음")
