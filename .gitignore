@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# 이카운트 — 인증정보/원본 덤프 절대 커밋 금지
+.secrets/
+cron_tracking/
+ecount_config.local.json
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
