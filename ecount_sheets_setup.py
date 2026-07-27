@@ -380,9 +380,9 @@ def write_headers(sheets_service, spreadsheet_id: str, tab_names: list[str]) -> 
         requests.append({
             "updateSheetProperties": {
                 "properties": {"sheetId": sheet_id, "gridProperties": {
-                    "frozenRows": HEADER_ROW_IDX + 1, "frozenColumns": FREEZE_COLS.get(name, 0),
+                    "frozenRowCount": HEADER_ROW_IDX + 1, "frozenColumnCount": FREEZE_COLS.get(name, 0),
                 }},
-                "fields": "gridProperties.frozenRows,gridProperties.frozenColumns",
+                "fields": "gridProperties.frozenRowCount,gridProperties.frozenColumnCount",
             }
         })
         requests.append({
