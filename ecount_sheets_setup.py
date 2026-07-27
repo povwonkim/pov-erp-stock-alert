@@ -34,31 +34,44 @@ SCOPES = [
 # 이 시스템의 범위에서 완전히 제외(집계에도 포함 안 함). 온라인(MXN 계열) 창고는 별도 시스템.
 OFFLINE_WAREHOUSES = ["POINT OF VIEW(법인)", "THE HYUNDAI SEOUL", "시시호시-수원점", "신세계 강남-피숀"]
 
-# ---- 서식(색/줄무늬/얼림) — 카페24 온라인 시스템 시트의 시각 스타일(진한 배너/줄무늬/상태색)을
-# 오프라인 시트에도 동일하게 적용한다. ----
-BANNER_BG = {"red": 0.906, "green": 0.933, "blue": 0.933}   # 1행 배너(연한 틸)
-HEADER_BG = {"red": 0.122, "green": 0.294, "blue": 0.294}   # 2행 헤더(진한 틸)
-STRIPE_BG = {"red": 0.980, "green": 0.976, "blue": 0.957}   # 데이터 줄무늬(연한 웜그레이)
+# ---- 서식(색/줄무늬/얼림/폰트) — 2026-07-28 디자인 검토(별도 세션) 스펙 반영.
+# 배너는 어둡게 위로, 헤더는 밝게 아래로(둘 다 어두우면 얼린 두 줄이 두꺼운 띠가 됨). ----
+BANNER1_BG = {"red": 0.102, "green": 0.102, "blue": 0.102}   # #1A1A1A — 1행(탭 설명)
+BANNER2_BG = {"red": 0.200, "green": 0.200, "blue": 0.200}   # #333333 — 2행(할 일)
+BANNER3_BG = {"red": 0.945, "green": 0.945, "blue": 0.945}   # #F1F1F1 — 3행(정렬근거, 헤더와 같은 톤)
+BANNER_FG_LIGHT = {"red": 1, "green": 1, "blue": 1}
+BANNER3_FG = {"red": 0.4, "green": 0.4, "blue": 0.4}
 
-SEMANTIC_DANGER_BG = {"red": 0.984, "green": 0.918, "blue": 0.910}
-SEMANTIC_DANGER_FG = {"red": 0.698, "green": 0.227, "blue": 0.180}
-SEMANTIC_WARNING_BG = {"red": 0.984, "green": 0.953, "blue": 0.875}
-SEMANTIC_WARNING_FG = {"red": 0.604, "green": 0.420, "blue": 0.047}
-SEMANTIC_NEUTRAL_BG = {"red": 0.933, "green": 0.933, "blue": 0.918}
-SEMANTIC_NEUTRAL_FG = {"red": 0.455, "green": 0.475, "blue": 0.486}
-SEMANTIC_GOOD_BG = {"red": 0.910, "green": 0.945, "blue": 0.918}
-SEMANTIC_GOOD_FG = {"red": 0.247, "green": 0.478, "blue": 0.333}
+HEADER_BG = {"red": 0.945, "green": 0.945, "blue": 0.945}    # #F1F1F1 — 4행(진짜 헤더)
+HEADER_FG = {"red": 0.133, "green": 0.133, "blue": 0.133}    # #222222
+HEADER_BORDER = {"red": 0.2, "green": 0.2, "blue": 0.2}      # #333333 하단 굵은 테두리
 
-# "상태" 컬럼에 부분일치로 색 입히는 규칙 — 문자열들이 서로 겹치지 않아 순서 무관.
+STRIPE_BG = {"red": 0.980, "green": 0.973, "blue": 0.965}    # #FAF8F6 — 데이터 줄무늬(웜 오프화이트)
+BODY_FG = {"red": 0.2, "green": 0.2, "blue": 0.2}            # #333333 — 순수 검정 금지
+
+FONT_BODY = "Noto Sans KR"
+FONT_MONO = "Roboto Mono"
+
+SEMANTIC_DANGER_BG = {"red": 0.976, "green": 0.816, "blue": 0.816}   # F9D0D0
+SEMANTIC_DANGER_FG = {"red": 0.800, "green": 0.000, "blue": 0.000}   # CC0000
+SEMANTIC_WARNING_BG = {"red": 1.000, "green": 0.976, "blue": 0.769}  # FFF9C4
+SEMANTIC_WARNING_FG = {"red": 0.702, "green": 0.420, "blue": 0.000}  # B36B00
+SEMANTIC_INFO_BG = {"red": 0.839, "green": 0.918, "blue": 0.973}     # D6EAF8 (과잉/과다재고)
+SEMANTIC_INFO_FG = {"red": 0.084, "green": 0.396, "blue": 0.753}     # 1565C0
+SEMANTIC_DIM_FG = {"red": 0.600, "green": 0.600, "blue": 0.600}      # 999999 (텍스트만, 배경 없음)
+
+# "상태" 컬럼에 부분일치(SEARCH)로 색 입히는 규칙 — (부분문자열, 배경 or None, 글자색, 굵게).
+# 문자열들이 서로 겹치지 않아 순서 무관. "정상"은 의도적으로 무색(색은 예외를 알리는 신호).
+# 품절이 오래될수록 신호가 약해진다: 신규(빨강,지금 채우면 매출 삶) → 지속(주황) → 장기(회색,이미 죽음).
 STATUS_COLOR_RULES = [
-    ("초과주문", SEMANTIC_DANGER_BG, SEMANTIC_DANGER_FG),
-    ("위험", SEMANTIC_DANGER_BG, SEMANTIC_DANGER_FG),
-    ("주의", SEMANTIC_WARNING_BG, SEMANTIC_WARNING_FG),
-    ("재고소량", SEMANTIC_NEUTRAL_BG, SEMANTIC_NEUTRAL_FG),
-    ("품절-신규", SEMANTIC_DANGER_BG, SEMANTIC_DANGER_FG),
-    ("품절-지속", SEMANTIC_WARNING_BG, SEMANTIC_WARNING_FG),
-    ("품절-장기", SEMANTIC_NEUTRAL_BG, SEMANTIC_NEUTRAL_FG),
-    ("정상", SEMANTIC_GOOD_BG, SEMANTIC_GOOD_FG),
+    ("초과주문", SEMANTIC_DANGER_BG, SEMANTIC_DANGER_FG, True),
+    ("위험", SEMANTIC_DANGER_BG, SEMANTIC_DANGER_FG, True),
+    ("품절-신규", SEMANTIC_DANGER_BG, SEMANTIC_DANGER_FG, True),
+    ("주의", SEMANTIC_WARNING_BG, SEMANTIC_WARNING_FG, True),
+    ("품절-지속", SEMANTIC_WARNING_BG, SEMANTIC_WARNING_FG, True),
+    ("과잉", SEMANTIC_INFO_BG, SEMANTIC_INFO_FG, True),
+    ("재고소량", None, SEMANTIC_DIM_FG, False),
+    ("품절-장기", None, SEMANTIC_DIM_FG, False),
 ]
 
 # 스크롤해도 식별자 컬럼(브랜드/품목코드/품목명 등)이 계속 보이게 얼릴 컬럼 수.
@@ -73,34 +86,65 @@ FREEZE_COLS = {
     "악성품절": 3,
 }
 
-# 탭 이름 → {note: 상단 배너(① 이 탭이 뭘 하는 곳인지 한 줄 설명 + ② 갱신 시점), headers: 헤더 행}.
+# 컬럼명 패턴 → 숫자서식. 0을 "–"로(0이 빽빽하면 "재고 없음"이 안 보임), 숫자는 Roboto Mono
+# 고정폭 + 우측정렬로 자릿수를 맞춘다(재고량 스캔 속도가 가장 크게 체감되는 변경).
+QTY_COLS = {"재고수량", "총재고", "전일재고", "입고수량(계산)", "출고수량",
+            "최근7일판매량", "최근90일판매량", "수량", "공급가액", "부가세", "합계", "단가"}
+DAY_COLS = {"DOI", "품절경과일", "미판매경과일", "미입고경과일", "리드타임(일)"}
+INT_COLS = {"우선순위"}
+MONEY_COLS = {"재고평가금액", "입고단가"}
+DATE_COLS = {"최근판매일", "최근입고일", "갱신일", "날짜"}
+
+NUMBER_FORMAT_QTY = {"type": "NUMBER", "pattern": '#,##0;-#,##0;"–"'}
+NUMBER_FORMAT_DAY = {"type": "NUMBER", "pattern": '0"일";;"–"'}
+NUMBER_FORMAT_INT = {"type": "NUMBER", "pattern": "#,##0"}
+NUMBER_FORMAT_MONEY = {"type": "NUMBER", "pattern": '#,##0"원";;"–"'}
+NUMBER_FORMAT_DATE = {"type": "DATE", "pattern": "yyyy-mm-dd"}
+
+# 탭 이름 → {note: 3행 배너([① 탭 설명, ② 할 일, ③ 정렬·갱신 근거]), headers: 헤더 행}.
 # 컬럼 순서 규칙(2026-07-28 통일): 식별자(브랜드/품목코드/품목명 등) → 상태(+우선순위) →
 # 나머지 지표 → 조치방안/메모(맨 끝). 상태가 있는 탭은 전부 조치방안도 같이 둔다(둘은 항상 짝).
-# "수집일시/업데이트일시/일자"처럼 매 행 반복되는 배치 기준시각은 컬럼에 넣지 않고 note 배너로
-# 뺀다(단, 일별재고이력의 "날짜"는 매 행이 실제로 다른 값이라 예외 — 그대로 컬럼 유지).
+# "수집일시/업데이트일시/일자"처럼 매 행 반복되는 배치 기준시각은 컬럼에 넣지 않고 배너 3행에
+# 넣는다(단, 일별재고이력의 "날짜"는 매 행이 실제로 다른 값이라 예외 — 그대로 컬럼 유지).
 # 3층 구조 (카페24 온라인 대조 시스템과 동일한 패턴을 오프라인에 적용, DOI 기반 우선순위 포함):
 #   1층 RAW(원본 수집) → 2층 일별재고이력(DOI·상태판정 엔진) → 3층 결과물(용도별 뷰)
 TABS: dict[str, dict] = {
     # 1층 RAW — 사람이 직접 보는 탭이 아니라, 아래 계산의 원재료.
     "RAW_재고현황": {
-        "note": "📋 이카운트 재고API 원본 스냅샷 (사람이 보는 탭 아님, 계산용 원본) · 🕒 기준일시: 매일 자동 갱신",
+        "note": [
+            "📋 이카운트 재고API 원본 스냅샷 (사람이 보는 탭 아님, 계산용 원본)",
+            "직접 볼 일 없음 — 데이터 이상 있을 때만 원본 확인용",
+            "정렬 없음(API 응답 순서 그대로) · 🕒 기준일시: 매일 자동 갱신",
+        ],
         "headers": ["창고코드", "창고명", "품목코드", "품목명", "사이즈", "재고수량"],
     },
     "RAW_판매현황": {
-        "note": "📋 이카운트 판매현황 이메일 원본 (사람이 보는 탭 아님, 계산용 원본) · 🕒 기준일(전일): 매일 자동 갱신",
+        "note": [
+            "📋 이카운트 판매현황 이메일 원본 (사람이 보는 탭 아님, 계산용 원본)",
+            "직접 볼 일 없음 — 데이터 이상 있을 때만 원본 확인용",
+            "정렬 없음 · 🕒 기준일(전일): 매일 자동 갱신",
+        ],
         "headers": ["브랜드", "품목코드", "품명", "수량", "단가", "공급가액", "부가세", "합계", "적요", "창고명", "담당자"],
     },
     "품목마스터": {
-        "note": "📋 품목코드↔브랜드↔조달유형 매핑표 · 🕒 신상품 추가 시에만 사람이 가끔 수동 갱신",
+        "note": [
+            "📋 품목코드↔브랜드↔조달유형 매핑표",
+            "신상품 브랜드가 '미분류'로 뜨면 조달유형만 채워주세요 — 그 뒤로 같은 브랜드는 자동 적용",
+            "정렬: 품목코드순 · 🕒 신상품 추가 시에만 사람이 가끔 수동 갱신",
+        ],
         "headers": ["품목코드", "품목명", "브랜드", "브랜드코드", "조달유형", "리드타임(일)", "갱신일"],
     },
     # 2층 일별재고이력 — 3층의 모든 결과물이 여기서 계산돼 나오는 엔진. 사람이 매일 볼 필요는
     # 없지만, 왜 그런 상태/조치가 나왔는지 근거를 확인하고 싶을 때 여기를 본다.
     # 상태값: 위험/주의(조달유형별 리드타임 기준, 아래 참고)/재고소량·판매없음(재고1~5&7일판매0)/
-    #        품절-신규(0~9일째)/품절-지속(10~29일째)/품절-장기(30일+)/초과주문(재고<0)/정상
+    #        품절-신규(0~9일째)/품절-지속(10~29일째)/품절-장기(30일+)/과잉(DOI>180일)/초과주문(재고<0)/정상
     # 위험/주의 임계값: 자체제작 DOI≤35일/35~49일 · 국내사입 DOI≤7일/7~14일 · 해외수입 DOI≤21일/21~35일
     "일별재고이력": {
-        "note": "📋 품목별 일별 재고·입출고·DOI·상태 계산 이력 — 3층 결과물 탭들이 전부 여기서 계산됨 · 🕒 매일 품목당 한 행씩 자동 누적",
+        "note": [
+            "📋 품목별 일별 재고·입출고·DOI·상태 계산 이력 — 3층 결과물 탭들이 전부 여기서 계산됨",
+            "직접 볼 일 없음 — 왜 그런 상태/조치가 나왔는지 근거 확인용",
+            "정렬: 날짜 오름차순 → 품목코드순 · 🕒 매일 품목당 한 행씩 자동 누적",
+        ],
         "headers": [
             "날짜", "브랜드", "품목코드", "품목명", "상태", "우선순위",
             "전일재고", "재고수량", "출고수량", "입고수량(계산)",
@@ -112,7 +156,11 @@ TABS: dict[str, dict] = {
     # 재고수량 = 오프라인 4개 창고 합계 (창고별 상세는 관리팀_전체재고에서 확인 — 디자인팀은
     # "만들어야 하는가"만 판단하면 되므로 창고별 상세 불필요).
     "디자인팀_발주필요": {
-        "note": "📋 디자인팀용 — 지금 발주(제작)해야 하는 품목만 골라서 보여줌 (전체 재고는 관리팀_전체재고 참고) · 🕒 마지막 갱신: 매일 자동",
+        "note": [
+            "📋 디자인팀용 — 지금 발주(제작)해야 하는 품목만 골라서 보여줌",
+            "우선순위 1번부터 순서대로 제작 발주 검토 (전체 재고는 관리팀_전체재고 참고)",
+            "정렬: 우선순위 오름차순 → 재고수량 오름차순 · 🕒 마지막 갱신: 매일 자동",
+        ],
         "headers": [
             "브랜드", "품목코드", "품목명", "조달유형", "상태", "우선순위",
             "리드타임(일)", "재고수량", "DOI", "최근7일판매량", "최근90일판매량", "품절경과일",
@@ -123,7 +171,11 @@ TABS: dict[str, dict] = {
     # 창고별 수량을 컬럼으로 나란히 둬서 창고이동 필요 여부(A매장 과잉·B매장 품절)를 한 행에서
     # 바로 확인 가능하게 한다. 조달유형별로 DOI 임계값이 다르므로 리드타임을 컬럼으로 명시.
     "관리팀_전체재고": {
-        "note": "📋 관리팀용 마스터 시트 — 오프라인 전체 재고를 창고별로 보고 국내발주/해외발주/창고이동을 판단 · 🕒 마지막 갱신: 매일 자동",
+        "note": [
+            "📋 관리팀용 마스터 시트 — 오프라인 전체 재고를 창고별로 보고 국내발주/해외발주/창고이동을 판단",
+            "상태가 위험/주의/과잉인 행부터 확인 · 창고별 컬럼에 0인 칸 있으면 창고이동 검토",
+            "정렬: 상태 우선순위 → 품목코드순 · 🕒 마지막 갱신: 매일 자동",
+        ],
         "headers": [
             "브랜드", "품목코드", "품목명", "조달유형", "상태",
             "리드타임(일)", *OFFLINE_WAREHOUSES, "총재고",
@@ -133,15 +185,26 @@ TABS: dict[str, dict] = {
     },
     # 재고 과잉 + 장기 미출고 (판매 없음, 재고만 쌓임 — 디자인팀_발주필요와 반대 축)
     "악성재고": {
-        "note": "📋 재고 과잉 + 오래 안 팔린 품목 — 프로모션/폐기 판단용 (반대 축: 디자인팀_발주필요) · 🕒 마지막 갱신: 매일 자동",
+        "note": [
+            "📋 재고 과잉 + 오래 안 팔린 품목 — 프로모션/폐기 판단용 (반대 축: 디자인팀_발주필요)",
+            "재고평가금액 큰 것부터 프로모션 또는 폐기 결정",
+            "정렬: 재고평가금액 내림차순 · 🕒 마지막 갱신: 매일 자동",
+        ],
         "headers": ["브랜드", "품목코드", "품목명", "재고수량", "최근판매일", "미판매경과일", "입고단가", "재고평가금액", "조치방안", "메모"],
     },
     # 품절-장기 중에서도 최근90일판매량=0(부활가치 없음)인 것만. 판매량 있는 장기품절은
     # 디자인팀_발주필요의 "재입고 골든타임"으로 남긴다. 재발주/제작/단종 최종 판단용.
+    # 컬럼은 "방치 근거"(품절경과일/조달유형/리드타임)와 "부활가치 근거"(최근입고일/미입고경과일/
+    # 최근90일판매량)를 모두 담아서 왜 여기 있는지 판단할 정보를 다 준다.
     "악성품절": {
-        "note": "📋 재고 없이 오래 방치된 품목(부활가치 없음) — 재발주/단종 최종 판단용 · 🕒 마지막 갱신: 매일 자동",
+        "note": [
+            "📋 재고 없이 오래 방치된 품목(부활가치 없음) — 재발주/단종 최종 판단용",
+            "품절경과일 오래된 것부터 재발주할지 단종할지 결정",
+            "정렬: 품절경과일 내림차순 · 🕒 마지막 갱신: 매일 자동",
+        ],
         "headers": [
-            "브랜드", "품목코드", "품목명", "재고수량", "최근판매일", "미판매경과일",
+            "브랜드", "품목코드", "품목명", "조달유형", "리드타임(일)",
+            "재고수량", "최근판매일", "미판매경과일", "품절경과일",
             "최근입고일", "미입고경과일", "최근90일판매량", "조치방안", "메모",
         ],
     },
@@ -209,15 +272,21 @@ def add_missing_tabs(sheets_service, spreadsheet_id: str, have: set[str]) -> lis
     return to_add
 
 
-def write_headers(sheets_service, spreadsheet_id: str, tab_names: list[str]) -> None:
-    """1행에 note 배너, 2행에 실제 헤더. 데이터는 3행부터 시작하는 게 전제.
+# 행 레이아웃(고정): 1~3행 = 배너(탭설명/할일/정렬근거), 4행 = 헤더, 5행부터 = 데이터.
+BANNER_ROWS = 3
+HEADER_ROW_IDX = BANNER_ROWS       # 0-indexed = 3 (=4행)
+DATA_START_IDX = BANNER_ROWS + 1   # 0-indexed = 4 (=5행)
 
-    과거 실행에서 컬럼 수가 더 많았던 적이 있으면 그 잔여 셀이 안 지워지고 남아
-    새 내용과 뒤섞일 수 있어서, 쓰기 전에 1~2행을 넉넉히(Z열까지) 지워둔다.
+
+def write_headers(sheets_service, spreadsheet_id: str, tab_names: list[str]) -> None:
+    """1~3행에 note 배너(탭설명/할일/정렬근거), 4행에 헤더. 데이터는 5행부터 시작하는 게 전제.
+
+    과거 실행에서 컬럼 수·행 수가 달랐던 적이 있으면 그 잔여 셀이 안 지워지고 남아 새 내용과
+    뒤섞일 수 있어서, 쓰기 전에 1~4행을 넉넉히(Z열까지) 지워둔다.
     """
     if not tab_names:
         return
-    clear_ranges = [f"'{name}'!A1:Z2" for name in tab_names]
+    clear_ranges = [f"'{name}'!A1:Z{HEADER_ROW_IDX + 1}" for name in tab_names]
     sheets_service.spreadsheets().values().batchClear(
         spreadsheetId=spreadsheet_id, body={"ranges": clear_ranges}
     ).execute()
@@ -225,8 +294,9 @@ def write_headers(sheets_service, spreadsheet_id: str, tab_names: list[str]) -> 
     data = []
     for name in tab_names:
         spec = TABS[name]
-        data.append({"range": f"'{name}'!A1", "values": [[spec["note"]]]})
-        data.append({"range": f"'{name}'!A2", "values": [spec["headers"]]})
+        for i, line in enumerate(spec["note"]):
+            data.append({"range": f"'{name}'!A{i + 1}", "values": [[line]]})
+        data.append({"range": f"'{name}'!A{HEADER_ROW_IDX + 1}", "values": [spec["headers"]]})
     sheets_service.spreadsheets().values().batchUpdate(
         spreadsheetId=spreadsheet_id,
         body={"valueInputOption": "RAW", "data": data},
@@ -252,7 +322,7 @@ def write_headers(sheets_service, spreadsheet_id: str, tab_names: list[str]) -> 
             delete_requests.append({"deleteBanding": {"bandedRangeId": banded["bandedRangeId"]}})
         delete_requests.append({
             "unmergeCells": {
-                "range": {"sheetId": sheet_id, "startRowIndex": 0, "endRowIndex": 1, "startColumnIndex": 0, "endColumnIndex": 26},
+                "range": {"sheetId": sheet_id, "startRowIndex": 0, "endRowIndex": BANNER_ROWS, "startColumnIndex": 0, "endColumnIndex": 26},
             }
         })
     if delete_requests:
@@ -266,39 +336,60 @@ def write_headers(sheets_service, spreadsheet_id: str, tab_names: list[str]) -> 
         ncols = max(len(headers), 1)
         sheet_id = by_title[name]["properties"]["sheetId"]
 
-        requests.append({
-            "mergeCells": {
-                "range": {"sheetId": sheet_id, "startRowIndex": 0, "endRowIndex": 1, "startColumnIndex": 0, "endColumnIndex": ncols},
-                "mergeType": "MERGE_ALL",
-            }
-        })
+        # 배너 3행 — 각 줄을 전체 병합 + 서로 다른 톤(위로 갈수록 진함).
+        banner_rows = [
+            (0, BANNER1_BG, BANNER_FG_LIGHT, True),
+            (1, BANNER2_BG, BANNER_FG_LIGHT, True),
+            (2, BANNER3_BG, BANNER3_FG, False),
+        ]
+        for row_idx, bg, fg, bold in banner_rows:
+            requests.append({
+                "mergeCells": {
+                    "range": {"sheetId": sheet_id, "startRowIndex": row_idx, "endRowIndex": row_idx + 1,
+                              "startColumnIndex": 0, "endColumnIndex": ncols},
+                    "mergeType": "MERGE_ALL",
+                }
+            })
+            requests.append({
+                "repeatCell": {
+                    "range": {"sheetId": sheet_id, "startRowIndex": row_idx, "endRowIndex": row_idx + 1},
+                    "cell": {"userEnteredFormat": {
+                        "backgroundColor": bg,
+                        "textFormat": {"bold": bold, "italic": not bold, "foregroundColor": fg, "fontFamily": FONT_BODY, "fontSize": 9},
+                        "verticalAlignment": "MIDDLE",
+                    }},
+                    "fields": "userEnteredFormat(textFormat,backgroundColor,verticalAlignment)",
+                }
+            })
+
+        # 헤더 행(4행) — 밝은 배경 + 진한 글씨 + 하단 굵은 테두리.
         requests.append({
             "repeatCell": {
-                "range": {"sheetId": sheet_id, "startRowIndex": 0, "endRowIndex": 1},
-                "cell": {"userEnteredFormat": {"textFormat": {"bold": True}, "backgroundColor": BANNER_BG}},
-                "fields": "userEnteredFormat(textFormat,backgroundColor)",
-            }
-        })
-        requests.append({
-            "repeatCell": {
-                "range": {"sheetId": sheet_id, "startRowIndex": 1, "endRowIndex": 2},
+                "range": {"sheetId": sheet_id, "startRowIndex": HEADER_ROW_IDX, "endRowIndex": HEADER_ROW_IDX + 1},
                 "cell": {"userEnteredFormat": {
                     "backgroundColor": HEADER_BG,
-                    "textFormat": {"bold": True, "foregroundColor": {"red": 1, "green": 1, "blue": 1}},
+                    "textFormat": {"bold": True, "foregroundColor": HEADER_FG, "fontFamily": FONT_BODY, "fontSize": 10},
+                    "horizontalAlignment": "CENTER",
+                    "verticalAlignment": "MIDDLE",
+                    "borders": {"bottom": {"style": "SOLID_THICK", "color": HEADER_BORDER}},
                 }},
-                "fields": "userEnteredFormat(textFormat,backgroundColor)",
+                "fields": "userEnteredFormat(textFormat,backgroundColor,horizontalAlignment,verticalAlignment,borders)",
             }
         })
+
         requests.append({
             "updateSheetProperties": {
-                "properties": {"sheetId": sheet_id, "gridProperties": {"frozenRows": 2, "frozenColumns": FREEZE_COLS.get(name, 0)}},
+                "properties": {"sheetId": sheet_id, "gridProperties": {
+                    "frozenRows": HEADER_ROW_IDX + 1, "frozenColumns": FREEZE_COLS.get(name, 0),
+                }},
                 "fields": "gridProperties.frozenRows,gridProperties.frozenColumns",
             }
         })
         requests.append({
             "addBanding": {
                 "bandedRange": {
-                    "range": {"sheetId": sheet_id, "startRowIndex": 2, "endRowIndex": 1000, "startColumnIndex": 0, "endColumnIndex": ncols},
+                    "range": {"sheetId": sheet_id, "startRowIndex": DATA_START_IDX, "endRowIndex": 1000,
+                              "startColumnIndex": 0, "endColumnIndex": ncols},
                     "rowProperties": {
                         "headerColor": {"red": 1, "green": 1, "blue": 1},
                         "firstBandColor": {"red": 1, "green": 1, "blue": 1},
@@ -308,17 +399,63 @@ def write_headers(sheets_service, spreadsheet_id: str, tab_names: list[str]) -> 
             }
         })
 
+        # 데이터 영역 기본 폰트/글자색부터 깔고(Noto Sans KR, #333333), 숫자류 컬럼을
+        # Roboto Mono + 우측정렬 + 전용 숫자서식으로 덮어쓴다(나중 요청이 우선 적용됨).
+        requests.append({
+            "repeatCell": {
+                "range": {"sheetId": sheet_id, "startRowIndex": DATA_START_IDX, "endRowIndex": 1000,
+                           "startColumnIndex": 0, "endColumnIndex": ncols},
+                "cell": {"userEnteredFormat": {"textFormat": {"fontFamily": FONT_BODY, "foregroundColor": BODY_FG}}},
+                "fields": "userEnteredFormat.textFormat",
+            }
+        })
+        numeric_col_formats = (
+            [(c, NUMBER_FORMAT_QTY) for c in QTY_COLS]
+            + [(c, NUMBER_FORMAT_DAY) for c in DAY_COLS]
+            + [(c, NUMBER_FORMAT_INT) for c in INT_COLS]
+            + [(c, NUMBER_FORMAT_MONEY) for c in MONEY_COLS]
+        )
+        for col_name, fmt in numeric_col_formats:
+            if col_name in headers:
+                col = headers.index(col_name)
+                requests.append({
+                    "repeatCell": {
+                        "range": {"sheetId": sheet_id, "startRowIndex": DATA_START_IDX, "endRowIndex": 1000,
+                                   "startColumnIndex": col, "endColumnIndex": col + 1},
+                        "cell": {"userEnteredFormat": {
+                            "numberFormat": fmt,
+                            "horizontalAlignment": "RIGHT",
+                            "textFormat": {"fontFamily": FONT_MONO},
+                        }},
+                        "fields": "userEnteredFormat(numberFormat,horizontalAlignment,textFormat)",
+                    }
+                })
+        for col_name in DATE_COLS:
+            if col_name in headers:
+                col = headers.index(col_name)
+                requests.append({
+                    "repeatCell": {
+                        "range": {"sheetId": sheet_id, "startRowIndex": DATA_START_IDX, "endRowIndex": 1000,
+                                   "startColumnIndex": col, "endColumnIndex": col + 1},
+                        "cell": {"userEnteredFormat": {"numberFormat": NUMBER_FORMAT_DATE}},
+                        "fields": "userEnteredFormat.numberFormat",
+                    }
+                })
+
         if "상태" in headers:
             status_col = headers.index("상태")
-            for substr, bg, fg in STATUS_COLOR_RULES:
+            for substr, bg, fg, bold in STATUS_COLOR_RULES:
+                fmt = {"textFormat": {"bold": bold, "foregroundColor": fg}}
+                if bg is not None:
+                    fmt["backgroundColor"] = bg
                 requests.append({
                     "addConditionalFormatRule": {
                         "rule": {
-                            "ranges": [{"sheetId": sheet_id, "startRowIndex": 2, "endRowIndex": 1000,
+                            "ranges": [{"sheetId": sheet_id, "startRowIndex": DATA_START_IDX, "endRowIndex": 1000,
                                         "startColumnIndex": status_col, "endColumnIndex": status_col + 1}],
                             "booleanRule": {
                                 "condition": {"type": "TEXT_CONTAINS", "values": [{"userEnteredValue": substr}]},
-                                "format": {"backgroundColor": bg, "textFormat": {"bold": True, "foregroundColor": fg}},
+                                "format": fmt,
                             },
                         },
                         "index": 0,
@@ -331,11 +468,38 @@ def write_headers(sheets_service, spreadsheet_id: str, tab_names: list[str]) -> 
                 requests.append({
                     "addConditionalFormatRule": {
                         "rule": {
-                            "ranges": [{"sheetId": sheet_id, "startRowIndex": 2, "endRowIndex": 1000,
+                            "ranges": [{"sheetId": sheet_id, "startRowIndex": DATA_START_IDX, "endRowIndex": 1000,
                                         "startColumnIndex": qty_col, "endColumnIndex": qty_col + 1}],
                             "booleanRule": {
                                 "condition": {"type": "NUMBER_LESS", "values": [{"userEnteredValue": "0"}]},
                                 "format": {"backgroundColor": SEMANTIC_DANGER_BG, "textFormat": {"bold": True, "foregroundColor": SEMANTIC_DANGER_FG}},
+                            },
+                        },
+                        "index": 0,
+                    }
+                })
+
+        # 관리팀_전체재고: 창고이동 신호 — 총재고>0인데 특정 창고만 0이면 그 칸을 흐리게(회색)
+        # 표시해서, 가로로 훑으면 "어디로 보내야 하는지"가 바로 보이게 한다.
+        if name == "관리팀_전체재고" and "총재고" in headers:
+            total_col = headers.index("총재고")
+            total_letter = _col_letter(total_col)
+            for wh in OFFLINE_WAREHOUSES:
+                if wh not in headers:
+                    continue
+                wh_col = headers.index(wh)
+                wh_letter = _col_letter(wh_col)
+                requests.append({
+                    "addConditionalFormatRule": {
+                        "rule": {
+                            "ranges": [{"sheetId": sheet_id, "startRowIndex": DATA_START_IDX, "endRowIndex": 1000,
+                                        "startColumnIndex": wh_col, "endColumnIndex": wh_col + 1}],
+                            "booleanRule": {
+                                "condition": {
+                                    "type": "CUSTOM_FORMULA",
+                                    "values": [{"userEnteredValue": f"=AND(${wh_letter}{DATA_START_IDX + 1}=0,${total_letter}{DATA_START_IDX + 1}>0)"}],
+                                },
+                                "format": {"textFormat": {"foregroundColor": SEMANTIC_DIM_FG}},
                             },
                         },
                         "index": 0,
@@ -349,6 +513,16 @@ def write_headers(sheets_service, spreadsheet_id: str, tab_names: list[str]) -> 
             ).execute()
         except Exception as e:  # 병합이 기존 데이터와 충돌하는 등 — 헤더 텍스트 자체는 이미 써졌으니 계속 진행
             print(f"[sheets] 서식 적용 중 일부 실패(무시하고 진행): {e}")
+
+
+def _col_letter(idx: int) -> str:
+    """0-indexed 컬럼 번호 -> A1 표기 알파벳 (A, B, ..., Z, AA, ...)."""
+    letters = ""
+    idx += 1
+    while idx > 0:
+        idx, rem = divmod(idx - 1, 26)
+        letters = chr(65 + rem) + letters
+    return letters
 
 
 def main() -> int:
