@@ -46,8 +46,10 @@ DUMP_DIR = Path(__file__).parent / "cron_tracking" / "ecount"
 INVENTORY_CALL_INTERVAL_SEC = 610
 
 # DOI 위험/주의 임계값 (일) — README "DOI 기반 우선순위 체계" 표와 동일.
+# 자체제작 리드타임 35일 → 30일로 변경(2026-07-28 사용자 확정, ecount_item_master.py의
+# LEADTIME_BY_TYPE도 동일하게 맞춤).
 RISK_WARN_BY_TYPE = {
-    "자체제작": (35, 49),
+    "자체제작": (30, 44),
     "국내사입": (7, 14),
     "해외수입": (21, 35),
 }

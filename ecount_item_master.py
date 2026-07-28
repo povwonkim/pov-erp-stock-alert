@@ -30,7 +30,7 @@ from pathlib import Path
 from openpyxl import load_workbook
 
 # ---- 조달유형별 리드타임 (README/ecount_sheets_setup.py와 동일하게 유지) ----
-LEADTIME_BY_TYPE = {"자체제작": 35, "국내사입": 7, "해외수입": 21}
+LEADTIME_BY_TYPE = {"자체제작": 30, "국내사입": 7, "해외수입": 21}
 
 # 실제 POV 자체제작 브랜드로 확정된 것만 (2026-07-27~28 이카운트 품목그룹2 화면 + 사용자 확인).
 # POV_application: 판매용은 아니지만(쇼핑백/봉투 등 비품) 재제작 필요 여부를 추적해야 해서
