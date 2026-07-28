@@ -77,17 +77,19 @@ SEMANTIC_WARNING_FG = {"red": 0.702, "green": 0.420, "blue": 0.000}  # B36B00
 SEMANTIC_INFO_BG = {"red": 0.839, "green": 0.918, "blue": 0.973}     # D6EAF8 — 🔵 (과잉/과다재고)
 SEMANTIC_INFO_FG = {"red": 0.084, "green": 0.396, "blue": 0.753}     # 1565C0
 SEMANTIC_DIM_FG = {"red": 0.600, "green": 0.600, "blue": 0.600}      # 999999 — ⚫ (텍스트만, 배경 없음)
+SEMANTIC_BROWN_BG = {"red": 0.929, "green": 0.855, "blue": 0.780}    # EDDAC7 — 🟤 (2026-07-28 신규,
+SEMANTIC_BROWN_FG = {"red": 0.545, "green": 0.271, "blue": 0.075}   # 8B4513  품절-신규+지속 통합)
 
 # "상태" 컬럼에 부분일치(SEARCH)로 색 입히는 규칙 — (부분문자열, 배경 or None, 글자색, 굵게).
 # 문자열들이 서로 겹치지 않아 순서 무관. "정상"은 의도적으로 무색(색은 예외를 알리는 신호).
-# 2026-07-28: 상태 이모지를 6색 동그라미로 통일하면서 색도 그 6단계에 맞춤 —
-# 🔴 위험(신규) → 🟠 곧(주의/지속) → 🟡 확인(재고소량) → 🔵 과잉 → ⚫ 끝(품절-장기, 조용히 죽은 상품).
+# 2026-07-28: 상태 이모지를 동그라미로 통일 — ⛔️ 마이너스재고(위험과 헷갈리지 않게 분리) →
+# 🔴 위험 → 🟠 주의 → 🟡 재고소량 → 🔵 과잉 → 🟤 품절-지속(0~29일, 원래 품절-신규/지속 2단계였는데
+# 표에서 흩어져 헷갈린다는 피드백으로 통합) → ⚫ 품절-장기(30일+, 조용히 죽은 상품).
 STATUS_COLOR_RULES = [
     ("마이너스재고", SEMANTIC_DANGER_BG, SEMANTIC_DANGER_FG, True),
     ("위험", SEMANTIC_DANGER_BG, SEMANTIC_DANGER_FG, True),
-    ("품절-신규", SEMANTIC_DANGER_BG, SEMANTIC_DANGER_FG, True),
     ("주의", SEMANTIC_ORANGE_BG, SEMANTIC_ORANGE_FG, True),
-    ("품절-지속", SEMANTIC_ORANGE_BG, SEMANTIC_ORANGE_FG, True),
+    ("품절-지속", SEMANTIC_BROWN_BG, SEMANTIC_BROWN_FG, True),
     ("재고소량", SEMANTIC_WARNING_BG, SEMANTIC_WARNING_FG, True),
     ("과잉", SEMANTIC_INFO_BG, SEMANTIC_INFO_FG, True),
     ("품절-장기", None, SEMANTIC_DIM_FG, False),
@@ -159,7 +161,7 @@ TABS: dict[str, dict] = {
     # 2층 일별재고이력 — 3층의 모든 결과물이 여기서 계산돼 나오는 엔진. 사람이 매일 볼 필요는
     # 없지만, 왜 그런 상태/조치가 나왔는지 근거를 확인하고 싶을 때 여기를 본다.
     # 상태값: 위험/주의(조달유형별 리드타임 기준, 아래 참고)/재고소량·판매없음(재고1~5&7일판매0)/
-    #        품절-신규(0~9일째)/품절-지속(10~29일째)/품절-장기(30일+)/과잉(DOI>180일)/마이너스재고(재고<0)/정상
+    #        품절-지속(0~29일째)/품절-장기(30일+)/과잉(DOI>180일)/마이너스재고(재고<0)/정상
     # 위험/주의 임계값: 자체제작 DOI≤30일/30~44일 · 국내사입 DOI≤7일/7~14일 · 해외수입 DOI≤21일/21~35일
     "일별재고이력": {
         "note": [
@@ -586,10 +588,12 @@ SECTION_FG = {"red": 0.133, "green": 0.133, "blue": 0.133}
 # 상태 신호(③ 표) 배경/글자색 — STATUS_COLOR_RULES와 같은 팔레트를 재사용해 시트 본문의
 # 실제 색과 "읽는 법"의 범례가 항상 같은 색을 쓰게 한다.
 _CIRCLE_STYLE = {
+    "⛔️": (SEMANTIC_DANGER_BG, SEMANTIC_DANGER_FG),
     "🔴": (SEMANTIC_DANGER_BG, SEMANTIC_DANGER_FG),
     "🟠": (SEMANTIC_ORANGE_BG, SEMANTIC_ORANGE_FG),
     "🟡": (SEMANTIC_WARNING_BG, SEMANTIC_WARNING_FG),
     "🔵": (SEMANTIC_INFO_BG, SEMANTIC_INFO_FG),
+    "🟤": (SEMANTIC_BROWN_BG, SEMANTIC_BROWN_FG),
     "⚫": (None, SEMANTIC_DIM_FG),
     "🟢": (None, BODY_FG),
 }
@@ -627,19 +631,18 @@ def _readme_content() -> list[tuple[str, list[str]]]:
     rows.append(("blank", pad()))
 
     rows.append(("section", pad("③ 동그라미가 뜻하는 것")))
-    rows.append(("tablehdr", pad("신호", "뜻", "언제까지", "상태 이름", "어떤 상태인가 · 무엇을 하나")))
-    for c in [
-        ("🔴", "지금", "오늘", "마이너스재고", "재고가 음수 — 전산 오류 가능성. 이카운트 전표를 먼저 확인"),
-        ("🔴", "지금", "오늘", "위험", "지금 발주해도 도착 전에 재고가 바닥납니다"),
-        ("🔴", "지금", "오늘", "품절-신규", "품절된 지 9일 이내 — 지금 채우면 매출을 살릴 수 있습니다"),
-        ("🟠", "곧", "이번 주", "주의", "아직 여유는 있지만 이번 주 안에 발주를 걸어야 합니다"),
-        ("🟠", "곧", "이번 주", "품절-지속", "품절 10~29일 — 재입고할지 이번 주 내 결정"),
-        ("🟡", "확인", "여유 있을 때", "재고소량", "재고는 몇 개 안 남았는데 7일간 판매 0 — 노출이 막혔는지 확인"),
-        ("🔵", "과잉", "월 1회", "과잉", "180일치 넘게 쌓임 — 돈이 묶여 있음. 프로모션·번들 검토"),
-        ("⚫", "끝", "월 1회", "품절-장기", "품절 30일 이상 — 재발주할지 단종할지 결정"),
-        ("🟢", "정상", "—", "정상", "지금 할 일이 없습니다"),
+    rows.append(("tablehdr", pad("상태", "언제까지", "조치")))
+    for status_text, deadline, action in [
+        ("⛔️ 마이너스재고", "오늘", "재고가 음수예요 — 이카운트 전표부터 확인하세요!"),
+        ("🔴 위험", "오늘", "지금 발주해도 늦어요 — 바로 발주하세요!"),
+        ("🟠 주의", "이번 주", "아직 여유 있지만 이번 주 안에 발주하세요!"),
+        ("🟡 재고소량", "여유 있을 때", "재고는 적은데 7일간 안 팔렸어요 — 노출이 막혔는지 확인하세요!"),
+        ("🔵 과잉", "월 1회", "180일치 넘게 쌓였어요 — 프로모션·번들을 검토하세요!"),
+        ("🟢 정상", "—", "지금 할 일 없어요"),
+        ("🟤 품절-지속(0~29일)", "이번 주", "지금 채우면 매출을 살릴 수 있어요 — 재입고 여부를 결정하세요!"),
+        ("⚫ 품절-장기(30일+)", "월 1회", "재발주할지 단종할지 결정하세요!"),
     ]:
-        rows.append(("circlerow", list(c)))
+        rows.append(("statusrow", pad(status_text, deadline, action)))
     rows.append(("blank", pad()))
 
     rows.append(("section", pad("④ 표에 나오는 말")))
@@ -743,8 +746,11 @@ def write_read_me_tab(sheets_service, spreadsheet_id: str, sheet_id: int) -> Non
                                          "textFormat": {"bold": True, "foregroundColor": HEADER_FG, "fontFamily": FONT_BODY, "fontSize": 9}}},
                                 "fields": "userEnteredFormat(backgroundColor,textFormat)"},
             })
-        elif rtype == "circlerow":
-            bg, fg = _CIRCLE_STYLE.get(vals[0], (None, BODY_FG))
+        elif rtype == "statusrow":
+            # vals[0]은 "⛔️ 마이너스재고"처럼 이모지+상태이름이 합쳐진 문자열 — 앞쪽 이모지로
+            # _CIRCLE_STYLE에서 색을 찾는다(신호/상태이름을 별도 컬럼으로 안 나누고 한 셀로 합침,
+            # 2026-07-28 사용자 요청: 두 컬럼이 항상 같이 봐야 하는 정보라 분리할 이유가 없었음).
+            bg, fg = next((v for k, v in _CIRCLE_STYLE.items() if vals[0].startswith(k)), (None, BODY_FG))
             fmt = {"textFormat": {"foregroundColor": fg, "fontFamily": FONT_BODY, "fontSize": 9, "bold": bg is not None}}
             if bg is not None:
                 fmt["backgroundColor"] = bg
@@ -753,6 +759,11 @@ def write_read_me_tab(sheets_service, spreadsheet_id: str, sheet_id: int) -> Non
                                           "startColumnIndex": 0, "endColumnIndex": _README_NCOLS},
                                 "cell": {"userEnteredFormat": fmt},
                                 "fields": "userEnteredFormat(backgroundColor,textFormat)"},
+            })
+            # 조치(C~E열)는 텍스트가 기니까 병합해서 한 칸처럼 보이게.
+            requests.append({
+                "mergeCells": {"range": {"sheetId": sheet_id, "startRowIndex": i, "endRowIndex": i + 1,
+                                          "startColumnIndex": 2, "endColumnIndex": _README_NCOLS}, "mergeType": "MERGE_ALL"},
             })
         elif rtype == "glossaryrow":
             requests.append({
