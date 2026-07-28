@@ -496,7 +496,9 @@ def build_daily_rows(target_date: date, inventory_raw: list[dict], sales_raw: li
             ])
 
     # 정렬 — 각 탭 note에 명시된 규칙.
-    design_rows.sort(key=lambda r: (r[5], r[7]))            # 우선순위 asc, 재고수량 asc
+    # POV_application(쇼핑백/봉투 등 비품, 판매용 아님)은 다른 판매 품목과 성격이 달라 섞이면
+    # 헷갈리므로 맨 아래로 그룹핑(2026-07-28 사용자 확정) — 그 안에서는 기존 우선순위 정렬 유지.
+    design_rows.sort(key=lambda r: (r[0] == "POV_application", r[5], r[7]))  # 비품 그룹 → 우선순위 asc → 재고수량 asc
     mgmt_rows.sort(key=lambda r: (PRIORITY_BY_STATUS.get(r[4], 50), r[1]))  # 상태우선순위 → 품목코드
     malstock_rows.sort(key=lambda r: -(r[5] or 0))           # 미판매(일) 내림차순 — 오래 방치된 것부터
                                                                 # (재고금액·재고수량 순으로 보고 싶으면 시트에서 직접 정렬)
