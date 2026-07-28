@@ -28,7 +28,7 @@ from openpyxl import load_workbook
 
 from ecount_client import EcountClient
 from ecount_item_master import LEADTIME_BY_TYPE
-from ecount_sheets_setup import TABS, OFFLINE_WAREHOUSES, DATA_START_IDX, _TOKEN_FILE, SCOPES
+from ecount_sheets_setup import TABS, OFFLINE_WAREHOUSES, OFFLINE_WAREHOUSE_CODES, DATA_START_IDX, _TOKEN_FILE, SCOPES
 
 KST = timezone(timedelta(hours=9))
 DUMP_DIR = Path(__file__).parent / "cron_tracking" / "ecount"
@@ -64,27 +64,34 @@ ACTION_BY_STATUS = {
 # ---------------------------------------------------------------------------
 
 def fetch_inventory_raw(base_date: str) -> list[dict]:
-    """창고별재고현황 API 원본(전체 창고). BAL_QTY 문자열→float 변환."""
+    """창고별재고현황 API 원본 — 오프라인 4개 창고만, 창고별로 나눠서 호출.
+
+    전체 창고를 한 번에 조회하면 10000건 근처에서 잘리는 것으로 의심되는 문제가 있었다
+    (README '탐사 결과' 참고). WH_CD로 창고를 하나씩 지정해 호출하면 건수가 훨씬 적게
+    나오는 것을 실제로 확인(2026-07-28, WH_CD=00014 단독 6676건 < 전체 10000건) —
+    이 시스템은 애초에 오프라인 4개 창고 외엔 안 쓰므로, 온라인 창고는 아예 조회하지 않는다.
+    """
     client = EcountClient()
-    data = client.inventory_balance_by_location(base_date)
-    result = data.get("Data", {}).get("Result") or []
-    if len(result) >= 10000:
-        print(f"[runner] ⚠️ API 응답이 {len(result)}건 — 10000건 근처면 페이지네이션으로 잘렸을 "
-              "가능성이 있습니다 (README '탐사 결과' 참고). 전체 품목수와 비교해 누락 여부 확인 필요.")
     rows = []
-    for r in result:
-        try:
-            qty = float(r.get("BAL_QTY") or 0)
-        except ValueError:
-            qty = 0.0
-        rows.append({
-            "창고코드": r.get("WH_CD", ""),
-            "창고명": r.get("WH_DES", ""),
-            "품목코드": r.get("PROD_CD", ""),
-            "품목명": r.get("PROD_DES", ""),
-            "사이즈": r.get("PROD_SIZE_DES", ""),
-            "재고수량": qty,
-        })
+    for wh_name, wh_code in OFFLINE_WAREHOUSE_CODES.items():
+        data = client.inventory_balance_by_location(base_date, WH_CD=wh_code)
+        result = data.get("Data", {}).get("Result") or []
+        if len(result) >= 10000:
+            print(f"[runner] ⚠️ {wh_name}(WH_CD={wh_code}) 응답이 {len(result)}건 — 10000건 "
+                  "근처라 이 창고도 페이지네이션으로 잘렸을 가능성이 있습니다. 확인 필요.")
+        for r in result:
+            try:
+                qty = float(r.get("BAL_QTY") or 0)
+            except ValueError:
+                qty = 0.0
+            rows.append({
+                "창고코드": r.get("WH_CD", wh_code),
+                "창고명": r.get("WH_DES", wh_name),
+                "품목코드": r.get("PROD_CD", ""),
+                "품목명": r.get("PROD_DES", ""),
+                "사이즈": r.get("PROD_SIZE_DES", ""),
+                "재고수량": qty,
+            })
     return rows
 
 
