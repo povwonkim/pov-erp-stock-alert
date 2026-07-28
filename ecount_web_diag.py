@@ -88,7 +88,9 @@ def main() -> int:
     DUMP_DIR.mkdir(parents=True, exist_ok=True)
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
+        # --disable-dev-shm-usage: 리소스가 작은 VPS/컨테이너에서 /dev/shm 용량 제한 때문에
+        # 큰 페이지를 렌더링할 때 Chromium이 멈추거나 죽는 문제의 표준 우회법(Playwright 권장).
+        browser = p.chromium.launch(headless=True, args=["--disable-dev-shm-usage"])
         context_kwargs = {}
         if STORAGE_STATE_PATH.exists():
             print(f"[diag] 저장된 로그인 상태 재사용: {STORAGE_STATE_PATH}")
@@ -151,7 +153,10 @@ def main() -> int:
         context.storage_state(path=str(STORAGE_STATE_PATH))
         print(f"[diag] 로그인 상태 저장: {STORAGE_STATE_PATH}")
 
-        page.screenshot(path=str(DUMP_DIR / "diag_03_after_login.png"), full_page=True)
+        # 로그인 후 페이지는 표가 1000행 넘게 나오기도 해서(2026-07-28 확인: 1004개 <tr>),
+        # full_page=True 스크린샷이 그 긴 페이지 전체를 렌더링하려다 헤드리스 브라우저가
+        # 메모리를 과도하게 먹어 서버 전체가 응답 불가 상태가 된 적이 있다 — 뷰포트만 찍는다.
+        page.screenshot(path=str(DUMP_DIR / "diag_03_after_login.png"), full_page=False)
         (DUMP_DIR / "diag_03_after_login.html").write_text(page.content())
         print(f"[diag] 로그인 후 화면 저장: {DUMP_DIR / 'diag_03_after_login.png'} / .html")
 
