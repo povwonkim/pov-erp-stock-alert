@@ -448,20 +448,24 @@ def build_daily_rows(target_date: date, inventory_raw: list[dict], sales_raw: li
         미입고경과일 = (target_date - date.fromisoformat(최근입고일)).days if 최근입고일 else ""
 
         # ---- 3층 결과물 라우팅 ----
+        # 디자인팀_발주필요는 "제작(자체제작) 발주"만 다루므로 조달유형이 자체제작인 품목만
+        # 노출한다(2026-07-28 사용자 확정 — 국내사입/해외수입은 디자인팀이 아니라 관리팀 소관).
+        is_design_target = 조달유형 == "자체제작"
         if 상태 == "⚫ 품절-장기":
             if 최근90일 > 0:
-                design_rows.append([
-                    브랜드, code, 품목명, 조달유형, 상태, PRIORITY_BY_STATUS.get(상태, 99),
-                    리드타임, 재고, doi, 최근7일, 최근90일, 품절경과일,
-                    "재입고 검토", f"재입고 골든타임(최근90일 {최근90일:.0f}개)",
-                ])
+                if is_design_target:
+                    design_rows.append([
+                        브랜드, code, 품목명, 조달유형, 상태, PRIORITY_BY_STATUS.get(상태, 99),
+                        리드타임, 재고, doi, 최근7일, 최근90일, 품절경과일,
+                        "재입고 검토", f"재입고 골든타임(최근90일 {최근90일:.0f}개)",
+                    ])
             else:
                 maldead_rows.append([
                     브랜드, code, 품목명, 조달유형, 리드타임, 재고,
                     최근판매일 or "", 미판매경과일, 품절경과일, 최근입고일 or "", 미입고경과일, 최근90일,
                     "재발주 검토 또는 단종 검토 (판단 필요)", "",
                 ])
-        elif 상태 in PRIORITY_BY_STATUS:
+        elif 상태 in PRIORITY_BY_STATUS and is_design_target:
             design_rows.append([
                 브랜드, code, 품목명, 조달유형, 상태, PRIORITY_BY_STATUS.get(상태, 99),
                 리드타임, 재고, doi, 최근7일, 최근90일, 품절경과일, 조치방안, "",
