@@ -95,6 +95,7 @@ def scrape_sales_status() -> list[dict]:
     link = get_today_view_link()
     print(f"[scraper] 링크: {link}")
 
+    DUMP_DIR = Path(__file__).parent / "cron_tracking" / "ecount"
     with sync_playwright() as p:
         browser, context = open_browser_context(p)
         try:
@@ -118,11 +119,20 @@ def scrape_sales_status() -> list[dict]:
                 }
                 """
             )
+
+            if not table_data or len(table_data) < 2:
+                # 표를 못 찾은 원인을 알 수 있게 실패 시점 화면을 남긴다(뷰포트만 — 큰 표
+                # 페이지에서 full_page 스크린샷이 메모리를 과도하게 먹은 적이 있어 그것과 동일한
+                # 이유로 여기서도 전체 페이지는 찍지 않는다).
+                DUMP_DIR.mkdir(parents=True, exist_ok=True)
+                page.screenshot(path=str(DUMP_DIR / "scraper_fail.png"), full_page=False)
+                (DUMP_DIR / "scraper_fail.html").write_text(page.content())
+                raise SystemExit(
+                    f"[scraper] 표를 찾지 못했거나 데이터 행이 없습니다. 실패 시점 화면 저장: "
+                    f"{DUMP_DIR / 'scraper_fail.png'} / .html (현재 URL: {page.url})"
+                )
         finally:
             browser.close()
-
-    if not table_data or len(table_data) < 2:
-        raise SystemExit("[scraper] 표를 찾지 못했거나 데이터 행이 없습니다.")
 
     header_cells, *body_rows = table_data
     rows = parse_table_rows(header_cells, body_rows)
