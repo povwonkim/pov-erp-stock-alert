@@ -97,12 +97,17 @@ def get_html_body(service, msg_id: str) -> str:
 
 
 def find_view_link(html: str) -> str | None:
-    """본문 HTML에서 '수신문서보기' 팝업 링크(ViewMailContents URL)를 찾는다.
-    이 링크는 SEND_CM_ID(그날 알림 고유 ID)를 포함해서 매일 바뀌므로 매번 새로 추출해야 한다.
-    작은따옴표/큰따옴표, 대소문자, href 없이 그냥 텍스트로 박힌 경우까지 폭넓게 시도한다."""
+    """본문 HTML에서 '수신문서보기' 버튼 링크를 찾는다.
+
+    실제로는 ViewMailContents URL이 본문에 직접 있지 않고, l.ecount.com 단축링크로
+    감싸져 있다(2026-07-28 실메일로 확인). 그 단축링크가 SEND_CM_ID(그날 알림 고유 ID)를
+    포함한 실제 URL로 리다이렉트하므로, 브라우저(Playwright)가 이 단축링크를 그대로 열면
+    자동으로 따라간다 — 매일 이 단축링크 자체도 새로 발급되므로 매번 새로 추출해야 한다."""
     patterns = [
+        r'href=["\'](https?://l\.ecount\.com/[^"\']*)["\']',
         r'href=["\'](https?://[^"\']*ViewMailContents[^"\']*)["\']',
         r'href=["\'](https?://[^"\']*AutomationBridge[^"\']*)["\']',
+        r'(https?://l\.ecount\.com/\S+)',
         r'(https?://[^\s"\'<>]*ViewMailContents[^\s"\'<>]*)',
         r'(https?://[^\s"\'<>]*AutomationBridge[^\s"\'<>]*)',
     ]
