@@ -388,6 +388,7 @@ def build_daily_rows(target_date: date, inventory_raw: list[dict], sales_raw: li
     mgmt_rows: list[list] = []
     malstock_rows: list[list] = []
     maldead_rows: list[list] = []
+    sample_rows: list[list] = []
 
     for code in sorted(all_codes):
         meta = item_master.get(code, {})
@@ -479,16 +480,27 @@ def build_daily_rows(target_date: date, inventory_raw: list[dict], sales_raw: li
                 브랜드, code, 품목명, 재고, 최근판매일 or "", 미판매경과일, "", "", malstock_action, "",
             ])
 
+        # 샘플의심재고 — 재고 1~2개 & 판매·입고 둘 다 60일 이상 없음. 근거(미판매/미입고 둘 다
+        # 정수로 확정)가 없으면 아예 후보에서 제외한다(도입 초기엔 이력이 짧아 근거가 없는 게
+        # 정상 — 근거 없음을 "이상 없음"으로 오판하면 안 됨).
+        if (재고 in (1, 2) and isinstance(미판매경과일, int) and 미판매경과일 >= 60
+                and isinstance(미입고경과일, int) and 미입고경과일 >= 60):
+            sample_rows.append([
+                브랜드, code, 품목명, 조달유형, 재고, 최근판매일 or "", 미판매경과일,
+                최근입고일 or "", 미입고경과일, "이카운트에서 샘플/전시용 여부 확인 필요", "",
+            ])
+
     # 정렬 — 각 탭 note에 명시된 규칙.
     design_rows.sort(key=lambda r: (r[5], r[7]))            # 우선순위 asc, 재고수량 asc
     mgmt_rows.sort(key=lambda r: (PRIORITY_BY_STATUS.get(r[4], 50), r[1]))  # 상태우선순위 → 품목코드
     malstock_rows.sort(key=lambda r: -(r[5] or 0))           # 미판매(일) 내림차순 — 오래 방치된 것부터
                                                                 # (재고금액·재고수량 순으로 보고 싶으면 시트에서 직접 정렬)
     maldead_rows.sort(key=lambda r: -(r[8] or 0))            # 품절경과일 내림차순
+    sample_rows.sort(key=lambda r: -(r[6] or 0))              # 미판매(일) 내림차순
 
     return {
         "history": history_rows, "design": design_rows, "mgmt": mgmt_rows,
-        "malstock": malstock_rows, "maldead": maldead_rows,
+        "malstock": malstock_rows, "maldead": maldead_rows, "sample": sample_rows,
     }
 
 
@@ -755,7 +767,8 @@ def main() -> int:
     result = build_daily_rows(target_date, inventory_raw, sales_raw, item_master, history)
     print(f"[runner] 계산 완료 — 일별이력 {len(result['history'])}건 / 디자인팀_발주필요 "
           f"{len(result['design'])}건 / 관리팀_전체재고 {len(result['mgmt'])}건 / "
-          f"악성재고 {len(result['malstock'])}건 / 악성품절 {len(result['maldead'])}건")
+          f"악성재고 {len(result['malstock'])}건 / 악성품절 {len(result['maldead'])}건 / "
+          f"샘플의심재고 {len(result['sample'])}건")
 
     if args.dry_run:
         print("[runner] --dry-run — 시트에 쓰지 않음")
@@ -775,6 +788,7 @@ def main() -> int:
     replace_tab_rows(service, args.spreadsheet_id, "관리팀_전체재고", result["mgmt"])
     replace_tab_rows(service, args.spreadsheet_id, "악성재고", result["malstock"])
     replace_tab_rows(service, args.spreadsheet_id, "악성품절", result["maldead"])
+    replace_tab_rows(service, args.spreadsheet_id, "샘플의심재고", result["sample"])
     write_status_distribution_banner(service, args.spreadsheet_id, result["mgmt"])
 
     if new_master_rows:
