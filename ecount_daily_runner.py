@@ -719,8 +719,9 @@ def main() -> int:
     ap.add_argument("--spreadsheet-id", required=True)
     ap.add_argument("--base-date", help="YYYY-MM-DD (기본: 실행일 기준 어제, KST)")
     ap.add_argument("--sales-xlsx", help="판매현황 엑셀 경로 (미지정 시 Gmail에서 자동 다운로드)")
-    ap.add_argument("--gmail-query", default='from:ecountnotice@ecount.com subject:판매현황 has:attachment newer_than:2d',
-                     help="Gmail 검색 쿼리 (기본값: 이카운트 판매현황 자동알림 발신자/제목으로 특정, 2026-07-28 실메일로 확인됨)")
+    ap.add_argument("--gmail-query", default='from:ecountnotice@ecount.com has:attachment newer_than:2d',
+                     help="Gmail 검색 쿼리 (기본값: 이카운트 발신자로만 특정 — subject: 필터는 한글 제목에서 "
+                          "매칭이 안 되는 경우가 있어 뺌, 2026-07-28 실메일로 확인)")
     ap.add_argument("--dry-run", action="store_true", help="계산만 하고 시트에 쓰지 않음")
     args = ap.parse_args()
 
