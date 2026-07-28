@@ -536,6 +536,260 @@ def _col_letter(idx: int) -> str:
     return letters
 
 
+# ---------------------------------------------------------------------------
+# "읽는 법" 탭 — 전사 배포용 온보딩 탭. 처음 보는 사람이 색/이모지/용어를 몰라도
+# 읽고 바로 쓸 수 있게 하는 게 목적(2026-07-28, 전사 배포 검토 중 지적 반영).
+# TABS의 note+headers 패턴과 다른 자유형 레이아웃이라 별도 함수로 작성/관리한다.
+# ---------------------------------------------------------------------------
+READ_ME_TAB = "읽는 법"
+_README_NCOLS = 5
+
+SECTION_BG = {"red": 0.90, "green": 0.90, "blue": 0.90}
+SECTION_FG = {"red": 0.133, "green": 0.133, "blue": 0.133}
+
+# 상태 신호(③ 표) 배경/글자색 — STATUS_COLOR_RULES와 같은 팔레트를 재사용해 시트 본문의
+# 실제 색과 "읽는 법"의 범례가 항상 같은 색을 쓰게 한다.
+_CIRCLE_STYLE = {
+    "🔴": (SEMANTIC_DANGER_BG, SEMANTIC_DANGER_FG),
+    "🟠": (SEMANTIC_ORANGE_BG, SEMANTIC_ORANGE_FG),
+    "🟡": (SEMANTIC_WARNING_BG, SEMANTIC_WARNING_FG),
+    "🔵": (SEMANTIC_INFO_BG, SEMANTIC_INFO_FG),
+    "⚫": (None, SEMANTIC_DIM_FG),
+    "🟢": (None, BODY_FG),
+}
+
+
+def _readme_content() -> list[tuple[str, list[str]]]:
+    """(행 종류, 셀 값 5개) 목록. 행 종류에 따라 write_read_me_tab이 다르게 서식을 입힌다."""
+    rows: list[tuple[str, list[str]]] = []
+    pad = lambda *vals: list(vals) + [""] * (_README_NCOLS - len(vals))  # noqa: E731
+
+    rows.append(("banner1", pad("처음 보시는 분은 이 탭부터 읽어 주세요")))
+    rows.append(("banner2", pad("오프라인(이카운트) 재고를 매일 자동으로 판정해 보여주는 시스템입니다")))
+    rows.append(("blank", pad()))
+
+    rows.append(("section", pad("① 하루에 이렇게 씁니다")))
+    rows.append(("text", pad("1. 대시보드 — 오늘 처리할 목록이 급한 순서대로 블록에 나뉘어 있습니다")))
+    rows.append(("text", pad("2. 블록 제목 오른쪽에 \"무엇을 하라\"가 적혀 있습니다")))
+    rows.append(("text", pad("3. 블록 우측 '출처'에 어느 탭에서 왔는지 적혀 있습니다")))
+    rows.append(("blank", pad()))
+
+    rows.append(("section", pad("② 어느 탭을 보면 되나")))
+    rows.append(("tablehdr", pad("탭", "누가", "언제", "수정", "무엇을 보나")))
+    for r in [
+        ["대시보드", "전원", "매일", "읽기만", "오늘 처리할 것 전부 · 여기서 시작하세요"],
+        ["관리팀_전체재고", "관리팀", "매일", "메모만", "창고별 재고 · 발주와 매장 간 이동 결정"],
+        ["디자인팀_발주필요", "디자인팀", "매일", "메모만", "제작 발주가 필요한 품목만"],
+        ["악성재고", "관리팀", "주 1회", "메모만", "재고가 쌓여 도는 품목"],
+        ["악성품절", "관리팀", "월 1회", "메모만", "되살릴지 접을지 결정할 품목"],
+        ["품목마스터", "담당자", "신상품 등록 시", "직접 수정", "품목 ↔ 브랜드 ↔ 조달유형 ↔ 리드타임"],
+        ["일별재고이력", "—", "—", "수정 금지", "모든 판정이 계산되는 곳"],
+        ["RAW_재고현황", "—", "—", "수정 금지", "이카운트 재고 원본"],
+        ["RAW_판매현황", "—", "—", "수정 금지", "이카운트 판매 원본"],
+    ]:
+        rows.append(("tablerow", r))
+    rows.append(("blank", pad()))
+
+    rows.append(("section", pad("③ 동그라미가 뜻하는 것")))
+    rows.append(("tablehdr", pad("신호", "뜻", "언제까지", "상태 이름", "어떤 상태인가 · 무엇을 하나")))
+    for c in [
+        ("🔴", "지금", "오늘", "마이너스재고", "재고가 음수 — 전산 오류 가능성. 이카운트 전표를 먼저 확인"),
+        ("🔴", "지금", "오늘", "위험", "지금 발주해도 도착 전에 재고가 바닥납니다"),
+        ("🔴", "지금", "오늘", "품절-신규", "품절된 지 9일 이내 — 지금 채우면 매출을 살릴 수 있습니다"),
+        ("🟠", "곧", "이번 주", "주의", "아직 여유는 있지만 이번 주 안에 발주를 걸어야 합니다"),
+        ("🟠", "곧", "이번 주", "품절-지속", "품절 10~29일 — 재입고할지 이번 주 내 결정"),
+        ("🟡", "확인", "여유 있을 때", "재고소량", "재고는 몇 개 안 남았는데 7일간 판매 0 — 노출이 막혔는지 확인"),
+        ("🔵", "과잉", "월 1회", "과잉", "180일치 넘게 쌓임 — 돈이 묶여 있음. 프로모션·번들 검토"),
+        ("⚫", "끝", "월 1회", "품절-장기", "품절 30일 이상 — 재발주할지 단종할지 결정"),
+        ("🟢", "정상", "—", "정상", "지금 할 일이 없습니다"),
+    ]:
+        rows.append(("circlerow", list(c)))
+    rows.append(("blank", pad()))
+
+    rows.append(("section", pad("④ 표에 나오는 말")))
+    rows.append(("tablehdr", pad("용어", "뜻")))
+    for term, desc in [
+        ("DOI(소진일)", "지금 재고가 며칠 뒤에 바닥나는지. 재고 ÷ 최근 7일 하루평균 판매량. 예: 재고 62개를 하루 2개씩 팔면 31일"),
+        ("리드타임(일)", "발주해서 물건이 실제로 들어오기까지 걸리는 날짜"),
+        ("조달유형", "자체제작 / 국내사입 / 해외수입. 리드타임이 다르므로 위험 판정 기준도 다릅니다"),
+        ("총재고", "창고 4곳의 재고를 더한 값. 한 곳이라도 0이면 다른 곳에 남아있을 수 있습니다"),
+        ("7일 판매 / 90일 판매", "최근 7일 · 90일 동안 팔린 수량. 7일은 지금 속도, 90일은 원래 속도"),
+        ("재고금액", "남은 재고 × 입고단가. 이 품목에 묶여 있는 돈"),
+        ("품절(일) / 미판매(일)", "품절된 지 며칠 / 마지막으로 팔린 지 며칠"),
+        ("우선순위", "1이 가장 급합니다. 같은 상태 안에서 처리 순서를 정할 때 씁니다"),
+    ]:
+        rows.append(("glossaryrow", pad(term, desc)))
+    rows.append(("blank", pad()))
+
+    rows.append(("section", pad("⑤ 지켜 주세요")))
+    for b in [
+        "회색으로 표시된 탭(일별재고이력·RAW 2개)은 스크립트가 매일 다시 씁니다. 직접 고쳐도 다음날 사라집니다.",
+        "나머지 탭에서도 값은 자동으로 채워집니다. 사람이 적는 곳은 메모 컬럼뿐입니다.",
+        "품목마스터는 반대로 사람이 쓰는 탭입니다. 여기 적은 내용은 지워지지 않습니다.",
+        "숫자가 이상해 보이면 고치지 마시고 RAW 탭의 마지막 갱신 시각부터 확인해 주세요.",
+        "문의처: (담당자 이름과 슬랙 채널을 알려주시면 이 자리에 채워넣습니다) — 이 시트가 이상하면 여기로 연락하세요.",
+    ]:
+        rows.append(("text", pad(f"· {b}")))
+
+    return rows
+
+
+def write_read_me_tab(sheets_service, spreadsheet_id: str, sheet_id: int) -> None:
+    content = _readme_content()
+    values = [v for _, v in content]
+    nrows = len(content)
+
+    sheets_service.spreadsheets().values().batchClear(
+        spreadsheetId=spreadsheet_id, body={"ranges": [f"'{READ_ME_TAB}'!A1:Z500"]}
+    ).execute()
+    sheets_service.spreadsheets().values().update(
+        spreadsheetId=spreadsheet_id, range=f"'{READ_ME_TAB}'!A1",
+        valueInputOption="RAW", body={"values": values},
+    ).execute()
+
+    # 재실행 안전 — 기존 병합/줄무늬 지우고 새로 입힌다.
+    meta = sheets_service.spreadsheets().get(
+        spreadsheetId=spreadsheet_id, fields="sheets(properties(sheetId,title),bandedRanges(bandedRangeId))"
+    ).execute()
+    delete_requests = []
+    for s in meta["sheets"]:
+        if s["properties"]["title"] != READ_ME_TAB:
+            continue
+        delete_requests.append({
+            "unmergeCells": {"range": {"sheetId": sheet_id, "startRowIndex": 0, "endRowIndex": nrows,
+                                        "startColumnIndex": 0, "endColumnIndex": _README_NCOLS}},
+        })
+        for banded in s.get("bandedRanges", []):
+            delete_requests.append({"deleteBanding": {"bandedRangeId": banded["bandedRangeId"]}})
+    if delete_requests:
+        sheets_service.spreadsheets().batchUpdate(spreadsheetId=spreadsheet_id, body={"requests": delete_requests}).execute()
+
+    requests = []
+    # 기본 폰트/줄바꿈부터 전체에 깔고, 아래서 행별로 덮어쓴다(나중 요청이 우선 적용).
+    requests.append({
+        "repeatCell": {
+            "range": {"sheetId": sheet_id, "startRowIndex": 0, "endRowIndex": nrows,
+                       "startColumnIndex": 0, "endColumnIndex": _README_NCOLS},
+            "cell": {"userEnteredFormat": {
+                "textFormat": {"fontFamily": FONT_BODY, "fontSize": 9, "foregroundColor": BODY_FG},
+                "wrapStrategy": "WRAP", "verticalAlignment": "MIDDLE",
+            }},
+            "fields": "userEnteredFormat(textFormat,wrapStrategy,verticalAlignment)",
+        }
+    })
+
+    def merge_row(r0: int, bg: dict, fg: dict, bold: bool, size: int = 10, align: str = "LEFT") -> None:
+        requests.append({
+            "mergeCells": {"range": {"sheetId": sheet_id, "startRowIndex": r0, "endRowIndex": r0 + 1,
+                                      "startColumnIndex": 0, "endColumnIndex": _README_NCOLS}, "mergeType": "MERGE_ALL"},
+        })
+        fmt = {"backgroundColor": bg, "textFormat": {"bold": bold, "foregroundColor": fg, "fontFamily": FONT_BODY, "fontSize": size},
+               "verticalAlignment": "MIDDLE", "horizontalAlignment": align}
+        requests.append({
+            "repeatCell": {"range": {"sheetId": sheet_id, "startRowIndex": r0, "endRowIndex": r0 + 1,
+                                      "startColumnIndex": 0, "endColumnIndex": _README_NCOLS},
+                            "cell": {"userEnteredFormat": fmt},
+                            "fields": "userEnteredFormat(backgroundColor,textFormat,verticalAlignment,horizontalAlignment)"},
+        })
+
+    for i, (rtype, vals) in enumerate(content):
+        if rtype == "banner1":
+            merge_row(i, BANNER1_BG, BANNER_FG_LIGHT, True, size=12, align="CENTER")
+        elif rtype == "banner2":
+            merge_row(i, BANNER3_BG, BANNER3_FG, False, size=9, align="LEFT")
+        elif rtype == "section":
+            merge_row(i, SECTION_BG, SECTION_FG, True, size=11, align="LEFT")
+        elif rtype == "tablehdr":
+            requests.append({
+                "repeatCell": {"range": {"sheetId": sheet_id, "startRowIndex": i, "endRowIndex": i + 1,
+                                          "startColumnIndex": 0, "endColumnIndex": _README_NCOLS},
+                                "cell": {"userEnteredFormat": {"backgroundColor": HEADER_BG,
+                                         "textFormat": {"bold": True, "foregroundColor": HEADER_FG, "fontFamily": FONT_BODY, "fontSize": 9}}},
+                                "fields": "userEnteredFormat(backgroundColor,textFormat)"},
+            })
+        elif rtype == "circlerow":
+            bg, fg = _CIRCLE_STYLE.get(vals[0], (None, BODY_FG))
+            fmt = {"textFormat": {"foregroundColor": fg, "fontFamily": FONT_BODY, "fontSize": 9, "bold": bg is not None}}
+            if bg is not None:
+                fmt["backgroundColor"] = bg
+            requests.append({
+                "repeatCell": {"range": {"sheetId": sheet_id, "startRowIndex": i, "endRowIndex": i + 1,
+                                          "startColumnIndex": 0, "endColumnIndex": _README_NCOLS},
+                                "cell": {"userEnteredFormat": fmt},
+                                "fields": "userEnteredFormat(backgroundColor,textFormat)"},
+            })
+        elif rtype == "glossaryrow":
+            requests.append({
+                "mergeCells": {"range": {"sheetId": sheet_id, "startRowIndex": i, "endRowIndex": i + 1,
+                                          "startColumnIndex": 1, "endColumnIndex": _README_NCOLS}, "mergeType": "MERGE_ALL"},
+            })
+            requests.append({
+                "repeatCell": {"range": {"sheetId": sheet_id, "startRowIndex": i, "endRowIndex": i + 1,
+                                          "startColumnIndex": 0, "endColumnIndex": 1},
+                                "cell": {"userEnteredFormat": {"textFormat": {"bold": True, "fontFamily": FONT_BODY, "fontSize": 9}}},
+                                "fields": "userEnteredFormat.textFormat"},
+            })
+
+    # 열 너비 — A(용어/탭이름) 좁게, B~D 중간, E(설명) 넓게.
+    requests.append({"updateDimensionProperties": {"range": {"sheetId": sheet_id, "dimension": "COLUMNS", "startIndex": 0, "endIndex": 1},
+                                                     "properties": {"pixelSize": 170}, "fields": "pixelSize"}})
+    requests.append({"updateDimensionProperties": {"range": {"sheetId": sheet_id, "dimension": "COLUMNS", "startIndex": 1, "endIndex": 4},
+                                                     "properties": {"pixelSize": 100}, "fields": "pixelSize"}})
+    requests.append({"updateDimensionProperties": {"range": {"sheetId": sheet_id, "dimension": "COLUMNS", "startIndex": 4, "endIndex": 5},
+                                                     "properties": {"pixelSize": 430}, "fields": "pixelSize"}})
+
+    try:
+        sheets_service.spreadsheets().batchUpdate(spreadsheetId=spreadsheet_id, body={"requests": requests}).execute()
+    except Exception as e:
+        print(f"[sheets] 읽는 법 탭 서식 적용 중 일부 실패(무시하고 진행): {e}")
+
+
+# 탭 순서 — 사람이 매일 보는 결과물이 앞, 원본/계산용은 뒤로 (2026-07-28, 전사 배포 검토 반영).
+# 존재하지 않는 탭은 reorder_tabs가 건너뛰므로 아직 안 만든 탭(샘플의심재고 등)을 미리 적어둬도 안전.
+TAB_ORDER = [
+    READ_ME_TAB, "대시보드", "관리팀_전체재고", "디자인팀_발주필요",
+    "악성재고", "악성품절", "샘플의심재고", "일별재고이력", "품목마스터",
+    "RAW_재고현황", "RAW_판매현황",
+]
+
+
+def reorder_tabs(sheets_service, spreadsheet_id: str) -> None:
+    meta = sheets_service.spreadsheets().get(
+        spreadsheetId=spreadsheet_id, fields="sheets.properties(sheetId,title)"
+    ).execute()
+    id_by_title = {s["properties"]["title"]: s["properties"]["sheetId"] for s in meta["sheets"]}
+    requests = []
+    idx = 0
+    for name in TAB_ORDER:
+        if name not in id_by_title:
+            continue
+        requests.append({"updateSheetProperties": {"properties": {"sheetId": id_by_title[name], "index": idx}, "fields": "index"}})
+        idx += 1
+    if requests:
+        sheets_service.spreadsheets().batchUpdate(spreadsheetId=spreadsheet_id, body={"requests": requests}).execute()
+
+
+def _ensure_dashboard_placeholder(sheets_service, spreadsheet_id: str, sheet_id: int) -> None:
+    """대시보드는 매일 daily_runner가 통째로 다시 쓰므로, 여기선 최초 1회용 안내 배너만 넣는다."""
+    sheets_service.spreadsheets().values().update(
+        spreadsheetId=spreadsheet_id, range="'대시보드'!A1",
+        valueInputOption="RAW",
+        body={"values": [["아직 실행 전 — ecount_daily_runner.py 최초 실행 후 매일 자동으로 채워집니다"]]},
+    ).execute()
+    requests = [{
+        "repeatCell": {
+            "range": {"sheetId": sheet_id, "startRowIndex": 0, "endRowIndex": 1, "startColumnIndex": 0, "endColumnIndex": 11},
+            "cell": {"userEnteredFormat": {
+                "backgroundColor": BANNER1_BG,
+                "textFormat": {"bold": True, "foregroundColor": BANNER_FG_LIGHT, "fontFamily": FONT_BODY, "fontSize": 10},
+                "verticalAlignment": "MIDDLE",
+            }},
+            "fields": "userEnteredFormat(backgroundColor,textFormat,verticalAlignment)",
+        }
+    }]
+    sheets_service.spreadsheets().batchUpdate(spreadsheetId=spreadsheet_id, body={"requests": requests}).execute()
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--spreadsheet-id", help="admin@pointofview.kr이 만들고 봇 계정에 편집자로 공유한 시트 ID (또는 URL)")
@@ -563,6 +817,28 @@ def main() -> int:
     # note/헤더는 매번 전체 탭 기준으로 동기화한다(1~2행만 덮어씀, 3행부터의 데이터는 안 건드림) —
     # TABS의 컬럼 정의가 바뀌었을 때(예: 상태/우선순위 컬럼 추가) 기존 탭도 따라가게.
     write_headers(sheets_service, spreadsheet_id, list(TABS.keys()))
+
+    # 읽는 법 / 대시보드 — TABS의 note+headers 패턴과 다른 특수 탭. 존재만 보장하고 내용은 각자 채운다.
+    have = existing_tab_names(sheets_service, spreadsheet_id)
+    extra_added = []
+    for name in (READ_ME_TAB, "대시보드"):
+        if name not in have:
+            sheets_service.spreadsheets().batchUpdate(
+                spreadsheetId=spreadsheet_id, body={"requests": [{"addSheet": {"properties": {"title": name}}}]}
+            ).execute()
+            extra_added.append(name)
+    if extra_added:
+        added = added + extra_added
+
+    meta = sheets_service.spreadsheets().get(
+        spreadsheetId=spreadsheet_id, fields="sheets.properties(sheetId,title)"
+    ).execute()
+    id_by_title = {s["properties"]["title"]: s["properties"]["sheetId"] for s in meta["sheets"]}
+    write_read_me_tab(sheets_service, spreadsheet_id, id_by_title[READ_ME_TAB])
+    if "대시보드" in extra_added:
+        _ensure_dashboard_placeholder(sheets_service, spreadsheet_id, id_by_title["대시보드"])
+
+    reorder_tabs(sheets_service, spreadsheet_id)
 
     url = f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}"
     print(f"[sheets] 대상: {url}")
