@@ -79,29 +79,40 @@ def main() -> int:
         print(f"[diag] 초기 화면 저장: {DUMP_DIR / 'diag_01_initial.png'} / .html")
 
         # 로그인 폼이 있는지 확인 (비밀번호 입력창 존재 여부로 판단).
-        pw_inputs = page.locator('input[type="password"]')
+        # 2026-07-28 실제 폼 구조 확인: id="txtUserId"/id="txtPass"/버튼 id="save"
+        # (onclick="excuteLogin()"). 텍스트 기반 탐색은 엉뚱한 요소를 집을 수 있어 id로 직접 지정.
+        pw_inputs = page.locator("#txtPass")
         if pw_inputs.count() > 0:
-            print(f"[diag] 로그인 폼 발견 (password input {pw_inputs.count()}개) — 로그인 시도...")
-            id_inputs = page.locator('input[type="text"], input[type="email"]')
-            print(f"[diag]   텍스트/이메일 입력창 {id_inputs.count()}개 발견")
-            if id_inputs.count() > 0:
-                try:
-                    id_inputs.first.fill(web_user_id)
-                except Exception as e:
-                    print(f"[diag]   아이디 입력 실패(이미 채워져 있을 수 있음): {e}")
-            pw_inputs.first.fill(web_password)
+            print(f"[diag] 로그인 폼 발견(#txtPass) — 로그인 시도...")
+            id_input = page.locator("#txtUserId")
+            if id_input.count() > 0:
+                id_input.fill(web_user_id)
+            pw_inputs.fill(web_password)
 
             page.screenshot(path=str(DUMP_DIR / "diag_02_filled.png"), full_page=True)
             print(f"[diag] 입력 후 화면 저장: {DUMP_DIR / 'diag_02_filled.png'}")
 
-            login_btn = page.get_by_text("로그인", exact=False)
-            if login_btn.count() > 0:
-                login_btn.first.click()
-                page.wait_for_load_state("networkidle", timeout=30000)
+            save_btn = page.locator("#save")
+            if save_btn.count() > 0:
+                save_btn.click()
+                try:
+                    page.wait_for_load_state("networkidle", timeout=15000)
+                except Exception as e:
+                    print(f"[diag]   networkidle 대기 타임아웃(무시하고 계속): {e}")
+                page.wait_for_timeout(2000)  # SPA/JS 리다이렉트 여유
             else:
-                print("[diag]   '로그인' 텍스트를 가진 버튼을 못 찾음 — 수동 확인 필요")
+                print("[diag]   #save 버튼을 못 찾음 — 폼 구조가 바뀌었을 수 있음")
+
+            print(f"[diag] 로그인 시도 후 현재 URL: {page.url}")
+            # 로그인 실패 시 뜨는 것으로 보이는 부트스트랩 alert 텍스트 확인.
+            alert_box = page.locator(".alert, [class*='alert']")
+            if alert_box.count() > 0:
+                for i in range(min(alert_box.count(), 3)):
+                    txt = alert_box.nth(i).inner_text().strip()
+                    if txt:
+                        print(f"[diag]   ⚠️ 알림창 텍스트[{i}]: {txt!r}")
         else:
-            print("[diag] 로그인 폼 없음 — 이미 인증된 상태이거나 팝업 구조가 다름")
+            print("[diag] 로그인 폼(#txtPass) 없음 — 이미 인증된 상태이거나 팝업 구조가 다름")
 
         page.screenshot(path=str(DUMP_DIR / "diag_03_after_login.png"), full_page=True)
         (DUMP_DIR / "diag_03_after_login.html").write_text(page.content())
