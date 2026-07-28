@@ -29,7 +29,12 @@ from openpyxl import load_workbook
 
 from ecount_client import EcountClient
 from ecount_item_master import LEADTIME_BY_TYPE
-from ecount_sheets_setup import TABS, OFFLINE_WAREHOUSES, OFFLINE_WAREHOUSE_CODES, DATA_START_IDX, _TOKEN_FILE, SCOPES
+from ecount_sheets_setup import (
+    TABS, OFFLINE_WAREHOUSES, OFFLINE_WAREHOUSE_CODES, DATA_START_IDX, _TOKEN_FILE, SCOPES,
+    STATUS_COLOR_RULES, BANNER1_BG, BANNER_FG_LIGHT, BANNER3_BG, BANNER3_FG,
+    HEADER_BG, HEADER_FG, FONT_BODY, FONT_MONO, BODY_FG,
+    SEMANTIC_DANGER_BG, SEMANTIC_INFO_BG, SEMANTIC_WARNING_BG,
+)
 
 KST = timezone(timedelta(hours=9))
 DUMP_DIR = Path(__file__).parent / "cron_tracking" / "ecount"
@@ -252,6 +257,56 @@ def append_history_rows(service, spreadsheet_id: str, target_date_str: str, new_
     replace_tab_rows(service, spreadsheet_id, "일별재고이력", all_rows)
 
 
+def auto_register_new_items(item_master: dict, sales_raw: list[dict], target_date: date) -> list[list]:
+    """오늘 판매현황에 새로 나타난(품목마스터에 없는) 품목코드를 자동 등록한다.
+
+    조달유형은 SKU가 아니라 브랜드 단위 속성이므로(README 참고), 같은 브랜드의 기존
+    품목마스터 항목에서 다수결로 물려받는다 — 사람이 매번 새 상품을 등록할 필요가 없다.
+    브랜드 자체가 처음 등장하는 경우만 '미분류'로 남아 사람이 한 번 확인하면 되고, 그 뒤로는
+    같은 브랜드의 모든 신상품에 자동 적용된다(이카운트 원본에 브랜드코드가 없어 국가코드
+    휴리스틱은 못 쓰지만, 브랜드명 다수결만으로 충분).
+
+    item_master는 in-place로 갱신되어 오늘 계산부터 바로 반영되고, 반환값은 품목마스터
+    시트에 추가로 써야 할 행이다(기존 행은 건드리지 않고 append).
+    """
+    brand_type_votes: dict[str, dict[str, int]] = {}
+    for meta in item_master.values():
+        if not meta.get("브랜드") or not meta.get("조달유형") or meta["조달유형"] == "미분류":
+            continue
+        votes = brand_type_votes.setdefault(meta["브랜드"], {})
+        votes[meta["조달유형"]] = votes.get(meta["조달유형"], 0) + 1
+
+    new_rows: list[list] = []
+    seen_codes: set[str] = set()
+    for r in sales_raw:
+        code = r["품목코드"]
+        if not code or code in item_master or code in seen_codes:
+            continue
+        seen_codes.add(code)
+        brand = r["브랜드"]
+        votes = brand_type_votes.get(brand)
+        if votes:
+            ptype = max(votes, key=votes.get)
+            leadtime = LEADTIME_BY_TYPE.get(ptype, "")
+        else:
+            ptype, leadtime = "미분류", ""
+        item_master[code] = {"브랜드": brand, "조달유형": ptype, "리드타임": leadtime, "품목명": r["품명"]}
+        new_rows.append([code, r["품명"], brand, "", ptype, leadtime, target_date.isoformat()])
+    return new_rows
+
+
+def append_item_master_rows(service, spreadsheet_id: str, rows: list[list]) -> None:
+    if not rows:
+        return
+    service.spreadsheets().values().append(
+        spreadsheetId=spreadsheet_id,
+        range=f"'품목마스터'!A{DATA_START_IDX + 1}",
+        valueInputOption="RAW",
+        insertDataOption="INSERT_ROWS",
+        body={"values": rows},
+    ).execute()
+
+
 # ---------------------------------------------------------------------------
 # 4. 계산 로직
 # ---------------------------------------------------------------------------
@@ -344,10 +399,10 @@ def build_daily_rows(target_date: date, inventory_raw: list[dict], sales_raw: li
         재고 = total_by_item.get(code, 0.0)
         출고 = out_by_item.get(code, 0.0)
         prev_row = hist_by_item.get(code, {}).get(prev_str)
-        전일재고 = _to_number(prev_row["재고수량"]) if prev_row else 0.0
+        전일재고 = _to_number(prev_row["재고"]) if prev_row else 0.0
         입고계산 = (재고 - 전일재고) + 출고
 
-        prev_stockout_days = int(_to_number(prev_row["품절경과일"])) if prev_row and prev_row.get("품절경과일") not in ("", None) else 0
+        prev_stockout_days = int(_to_number(prev_row["품절(일)"])) if prev_row and prev_row.get("품절(일)") not in ("", None) else 0
         if 재고 <= 0:
             # prev_row가 아예 없는(처음 등장하는) 품목은 "어제도 품절이었다"고 이어받을 근거가
             # 없으므로 무조건 0일차(처음 확인)로 시작한다.
@@ -364,7 +419,7 @@ def build_daily_rows(target_date: date, inventory_raw: list[dict], sales_raw: li
             row = item_hist.get(d)
             if not row:
                 continue
-            qty = _to_number(row.get("출고수량"))
+            qty = _to_number(row.get("출고"))
             if delta <= 6:
                 최근7일 += qty
             최근90일 += qty
@@ -383,9 +438,9 @@ def build_daily_rows(target_date: date, inventory_raw: list[dict], sales_raw: li
         최근판매일 = target_str if 출고 > 0 else None
         최근입고일 = target_str if 입고계산 > 0 else None
         for d_str, row in item_hist.items():
-            if _to_number(row.get("출고수량")) > 0 and (최근판매일 is None or d_str > 최근판매일):
+            if _to_number(row.get("출고")) > 0 and (최근판매일 is None or d_str > 최근판매일):
                 최근판매일 = d_str
-            if _to_number(row.get("입고수량(계산)")) > 0 and (최근입고일 is None or d_str > 최근입고일):
+            if _to_number(row.get("입고")) > 0 and (최근입고일 is None or d_str > 최근입고일):
                 최근입고일 = d_str
         미판매경과일 = (target_date - date.fromisoformat(최근판매일)).days if 최근판매일 else ""
         미입고경과일 = (target_date - date.fromisoformat(최근입고일)).days if 최근입고일 else ""
@@ -427,13 +482,220 @@ def build_daily_rows(target_date: date, inventory_raw: list[dict], sales_raw: li
     # 정렬 — 각 탭 note에 명시된 규칙.
     design_rows.sort(key=lambda r: (r[5], r[7]))            # 우선순위 asc, 재고수량 asc
     mgmt_rows.sort(key=lambda r: (PRIORITY_BY_STATUS.get(r[4], 50), r[1]))  # 상태우선순위 → 품목코드
-    malstock_rows.sort(key=lambda r: -(r[3] or 0))           # 재고평가금액 대신 재고수량 내림차순(단가 데이터 없음)
+    malstock_rows.sort(key=lambda r: -(r[5] or 0))           # 미판매(일) 내림차순 — 오래 방치된 것부터
+                                                                # (재고금액·재고수량 순으로 보고 싶으면 시트에서 직접 정렬)
     maldead_rows.sort(key=lambda r: -(r[8] or 0))            # 품절경과일 내림차순
 
     return {
         "history": history_rows, "design": design_rows, "mgmt": mgmt_rows,
         "malstock": malstock_rows, "maldead": maldead_rows,
     }
+
+
+# ---------------------------------------------------------------------------
+# 5. 대시보드 — "오늘 처리할 것" 큐. 이미 계산된 4개 결과물 리스트를 잘라서 조립할 뿐,
+#    새로 계산하지 않는다(같은 데이터가 두 군데서 다르게 나오는 걸 막기 위해).
+# ---------------------------------------------------------------------------
+DASHBOARD_HEADERS = ["순위", "브랜드", "품목명", "조달유형", "상태", "재고", "7일 판매", "DOI(소진일)", "경과(일)", "재고금액", "조치"]
+
+# (제목, 배경색 톤) — 목업의 "색" 컬럼과 동일한 배정.
+_BLOCK_TONE = {
+    "danger": SEMANTIC_DANGER_BG, "info": SEMANTIC_INFO_BG, "warning": SEMANTIC_WARNING_BG, "dim": None,
+}
+
+
+def _dashboard_row(rank: int, brand, name, ptype, status, qty, sales7, doi, elapsed, money, action) -> list:
+    return [rank, brand, name, ptype, status, qty, sales7, doi, elapsed, money, action]
+
+
+def build_dashboard_blocks(result: dict) -> list[dict]:
+    design, mgmt, malstock, maldead = result["design"], result["mgmt"], result["malstock"], result["maldead"]
+
+    def from_design(r, rank):
+        # r: 브랜드,코드,품목명,조달유형,상태,우선순위,리드타임,재고,DOI,7일,90일,품절(일),조치,메모
+        return _dashboard_row(rank, r[0], r[2], r[3], r[4], r[7], r[9], r[8], r[11], "", r[12])
+
+    def from_mgmt(r, rank, elapsed=""):
+        # r: 브랜드,코드,품목명,조달유형,상태,리드타임,4창고,총재고,전일재고,입고,출고,7일,DOI,조치,메모
+        return _dashboard_row(rank, r[0], r[2], r[3], r[4], r[10], r[14], r[15], elapsed, "", r[16])
+
+    def from_malstock(r, rank):
+        # r: 브랜드,코드,품목명,재고,최근판매일,미판매(일),입고단가,재고금액,조치,메모
+        return _dashboard_row(rank, r[0], r[2], "", "🔵 과잉", r[3], "", "", r[5], r[7], r[8])
+
+    def from_maldead(r, rank):
+        # r: 브랜드,코드,품목명,조달유형,리드타임,재고,최근판매일,미판매(일),품절(일),최근입고일,미입고(일),90일,조치,메모
+        return _dashboard_row(rank, r[0], r[2], r[3], "⚫ 품절-장기", r[5], "", "", r[7], "", r[12])
+
+    blk1_rows = [from_design(r, i + 1) for i, r in enumerate(design[:20])]
+    blk2_src = sorted([r for r in design if isinstance(r[11], int) and r[11] >= 3], key=lambda r: -r[11])
+    blk2_rows = [from_design(r, i + 1) for i, r in enumerate(blk2_src[:10])]
+
+    def out_of_stock_wh_count(r):
+        return sum(1 for v in r[6:10] if v == 0)
+
+    blk3_src = sorted(
+        [r for r in mgmt if r[10] > 0 and out_of_stock_wh_count(r) > 0],
+        key=lambda r: -out_of_stock_wh_count(r),
+    )
+    blk3_rows = [from_mgmt(r, i + 1) for i, r in enumerate(blk3_src[:20])]
+
+    blk4_src = sorted(mgmt, key=lambda r: -(r[14] or 0))
+    blk4_rows = [from_mgmt(r, i + 1) for i, r in enumerate(blk4_src[:10])]
+
+    # 악성재고/악성품절은 "매일 처리할 목록"이 아니라 "주기적으로 훑어보는 감사 리스트"라 —
+    # 상위 몇 개로 자르지 않고 전부 보여준다. 정렬 기준(재고금액/재고수량 등)도 강제하지 않고
+    # daily_runner가 계산한 기본 정렬(미판매(일)/품절(일) 내림차순)만 유지, 나머지는 시트에서
+    # 직접 정렬해서 보라는 사용자 요청 반영(2026-07-28).
+    blk5_rows = [from_malstock(r, i + 1) for i, r in enumerate(malstock)]
+    blk6_rows = [from_maldead(r, i + 1) for i, r in enumerate(maldead)]
+
+    return [
+        {"title": "오늘 조치 필요", "action": "지금 발주해야 리드타임 커버", "tone": "danger",
+         "source": "디자인팀_발주필요", "sort": "우선순위 → 재고 오름차순",
+         "total": len(design), "show": 20, "rows": blk1_rows},
+        {"title": "3일 이상 품절", "action": "즉시 재입고 검토", "tone": "danger",
+         "source": "디자인팀_발주필요", "sort": "품절(일) 내림차순",
+         "total": len(blk2_src), "show": 10, "rows": blk2_rows},
+        {"title": "창고이동 검토", "action": "결품 매장으로 재고 이동", "tone": "info",
+         "source": "관리팀_전체재고 · 총재고>0", "sort": "결품 매장 수 내림차순",
+         "total": len(blk3_src), "show": 20, "rows": blk3_rows},
+        {"title": "판매 속도 상위", "action": "재입고 우선순위 확인", "tone": "warning",
+         "source": "관리팀_전체재고", "sort": "최근 7일 판매량 내림차순",
+         "total": len(mgmt), "show": 10, "rows": blk4_rows},
+        {"title": "악성재고 정리", "action": "프로모션·번들·폐기 판단 (전체 목록, 필요시 시트에서 직접 정렬)", "tone": "info",
+         "source": "악성재고", "sort": "미판매(일) 내림차순",
+         "total": len(malstock), "show": len(malstock), "rows": blk5_rows},
+        {"title": "악성품절 — 단종 판단", "action": "재발주 여부 · 단종 확정 (전체 목록, 필요시 시트에서 직접 정렬)", "tone": "dim",
+         "source": "악성품절", "sort": "품절(일) 내림차순",
+         "total": len(maldead), "show": len(maldead), "rows": blk6_rows},
+    ]
+
+
+def build_status_distribution_line(mgmt_rows: list[list]) -> str:
+    order = ["🔴", "🟠", "🟡", "🔵", "⚫", "🟢"]
+    counts = {c: 0 for c in order}
+    for r in mgmt_rows:
+        status = r[4] or ""
+        for c in order:
+            if status.startswith(c):
+                counts[c] += 1
+                break
+    parts = " · ".join(f"{c} {counts[c]}" for c in order)
+    return f"오늘 재고 현황 — 전체 {len(mgmt_rows)}개 — {parts}"
+
+
+def write_status_distribution_banner(service, spreadsheet_id: str, mgmt_rows: list[list]) -> None:
+    """관리팀_전체재고 2행(할 일 배너)을 상태 분포 한 줄로 매일 갱신한다."""
+    line = build_status_distribution_line(mgmt_rows)
+    service.spreadsheets().values().update(
+        spreadsheetId=spreadsheet_id, range="'관리팀_전체재고'!A2",
+        valueInputOption="RAW", body={"values": [[line]]},
+    ).execute()
+
+
+def _status_style(status: str):
+    """STATUS_COLOR_RULES를 재사용해 대시보드 상태 셀 색을 본문 탭과 동일하게 맞춘다."""
+    for substr, bg, fg, bold in STATUS_COLOR_RULES:
+        if substr in (status or ""):
+            return bg, fg, bold
+    return None, BODY_FG, False
+
+
+def write_dashboard_tab(service, spreadsheet_id: str, sheet_id: int, blocks: list[dict], target_date: date) -> None:
+    ncols = len(DASHBOARD_HEADERS)
+    values: list[list] = [
+        ["오늘 처리할 것을 위에서부터 순서대로", "", "", "", "", "", "", "", "", "", ""],
+        [f"결과물 탭 4개에서 자동 집계 · 마지막 갱신: {target_date.isoformat()} (기준일)", "", "", "", "", "", "", "", "", "", ""],
+        [""] * ncols,
+    ]
+    row_styles: list[tuple[int, str, dict | None]] = []  # (row_idx0, kind, tone)
+
+    for block in blocks:
+        count_label = f"전체 {block['total']}개" if block["show"] >= block["total"] else f"상위 {block['show']} / 전체 {block['total']}개"
+        title_row = f"{block['title']} — {count_label} → {block['action']}"
+        meta_row = f"출처: {block['source']} · 정렬: {block['sort']}"
+        row_styles.append((len(values), "section", _BLOCK_TONE.get(block["tone"])))
+        values.append([title_row] + [""] * (ncols - 2) + [meta_row])
+        row_styles.append((len(values), "header", None))
+        values.append(list(DASHBOARD_HEADERS))
+        status_rows = []
+        for r in block["rows"]:
+            status_rows.append(len(values))
+            values.append(r)
+        row_styles.append((-1, "statusrows", status_rows))  # 표시용, 실제 서식 루프에서 사용
+        values.append([""] * ncols)  # 블록 사이 spacer
+
+    service.spreadsheets().values().batchClear(
+        spreadsheetId=spreadsheet_id, body={"ranges": ["'대시보드'!A1:Z2000"]}
+    ).execute()
+    service.spreadsheets().values().update(
+        spreadsheetId=spreadsheet_id, range="'대시보드'!A1",
+        valueInputOption="RAW", body={"values": values},
+    ).execute()
+
+    meta = service.spreadsheets().get(
+        spreadsheetId=spreadsheet_id, fields="sheets(properties(sheetId,title),bandedRanges(bandedRangeId))"
+    ).execute()
+    delete_requests = []
+    for s in meta["sheets"]:
+        if s["properties"]["sheetId"] != sheet_id:
+            continue
+        delete_requests.append({"unmergeCells": {"range": {"sheetId": sheet_id, "startRowIndex": 0, "endRowIndex": len(values), "startColumnIndex": 0, "endColumnIndex": ncols}}})
+        for banded in s.get("bandedRanges", []):
+            delete_requests.append({"deleteBanding": {"bandedRangeId": banded["bandedRangeId"]}})
+    if delete_requests:
+        service.spreadsheets().batchUpdate(spreadsheetId=spreadsheet_id, body={"requests": delete_requests}).execute()
+
+    requests = [{
+        "repeatCell": {
+            "range": {"sheetId": sheet_id, "startRowIndex": 0, "endRowIndex": len(values), "startColumnIndex": 0, "endColumnIndex": ncols},
+            "cell": {"userEnteredFormat": {"textFormat": {"fontFamily": FONT_BODY, "fontSize": 9, "foregroundColor": BODY_FG}}},
+            "fields": "userEnteredFormat.textFormat",
+        }
+    }]
+    # 배너 2행.
+    requests.append({"mergeCells": {"range": {"sheetId": sheet_id, "startRowIndex": 0, "endRowIndex": 1, "startColumnIndex": 0, "endColumnIndex": ncols}, "mergeType": "MERGE_ALL"}})
+    requests.append({"repeatCell": {"range": {"sheetId": sheet_id, "startRowIndex": 0, "endRowIndex": 1, "startColumnIndex": 0, "endColumnIndex": ncols},
+                                     "cell": {"userEnteredFormat": {"backgroundColor": BANNER1_BG, "textFormat": {"bold": True, "foregroundColor": BANNER_FG_LIGHT, "fontFamily": FONT_BODY, "fontSize": 11}, "horizontalAlignment": "CENTER", "verticalAlignment": "MIDDLE"}},
+                                     "fields": "userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,verticalAlignment)"}})
+    requests.append({"mergeCells": {"range": {"sheetId": sheet_id, "startRowIndex": 1, "endRowIndex": 2, "startColumnIndex": 0, "endColumnIndex": ncols}, "mergeType": "MERGE_ALL"}})
+    requests.append({"repeatCell": {"range": {"sheetId": sheet_id, "startRowIndex": 1, "endRowIndex": 2, "startColumnIndex": 0, "endColumnIndex": ncols},
+                                     "cell": {"userEnteredFormat": {"backgroundColor": BANNER3_BG, "textFormat": {"foregroundColor": BANNER3_FG, "fontFamily": FONT_BODY, "fontSize": 9}}},
+                                     "fields": "userEnteredFormat(backgroundColor,textFormat)"}})
+
+    for row_idx, kind, extra in row_styles:
+        if kind == "section":
+            tone_bg = extra
+            requests.append({"mergeCells": {"range": {"sheetId": sheet_id, "startRowIndex": row_idx, "endRowIndex": row_idx + 1, "startColumnIndex": 0, "endColumnIndex": ncols - 6}, "mergeType": "MERGE_ALL"}})
+            requests.append({"mergeCells": {"range": {"sheetId": sheet_id, "startRowIndex": row_idx, "endRowIndex": row_idx + 1, "startColumnIndex": ncols - 6, "endColumnIndex": ncols}, "mergeType": "MERGE_ALL"}})
+            fmt = {"textFormat": {"bold": True, "fontFamily": FONT_BODY, "fontSize": 10}}
+            if tone_bg is not None:
+                fmt["backgroundColor"] = tone_bg
+            requests.append({"repeatCell": {"range": {"sheetId": sheet_id, "startRowIndex": row_idx, "endRowIndex": row_idx + 1, "startColumnIndex": 0, "endColumnIndex": ncols}, "cell": {"userEnteredFormat": fmt}, "fields": "userEnteredFormat(backgroundColor,textFormat)"}})
+        elif kind == "header":
+            requests.append({"repeatCell": {"range": {"sheetId": sheet_id, "startRowIndex": row_idx, "endRowIndex": row_idx + 1, "startColumnIndex": 0, "endColumnIndex": ncols},
+                                             "cell": {"userEnteredFormat": {"backgroundColor": HEADER_BG, "textFormat": {"bold": True, "foregroundColor": HEADER_FG, "fontFamily": FONT_BODY, "fontSize": 9}}},
+                                             "fields": "userEnteredFormat(backgroundColor,textFormat)"}})
+        elif kind == "statusrows":
+            for r_idx in extra:
+                status_val = values[r_idx][4]
+                bg, fg, bold = _status_style(status_val)
+                fmt = {"textFormat": {"foregroundColor": fg, "bold": bold, "fontFamily": FONT_BODY, "fontSize": 9}}
+                if bg is not None:
+                    fmt["backgroundColor"] = bg
+                requests.append({"repeatCell": {"range": {"sheetId": sheet_id, "startRowIndex": r_idx, "endRowIndex": r_idx + 1, "startColumnIndex": 4, "endColumnIndex": 5}, "cell": {"userEnteredFormat": fmt}, "fields": "userEnteredFormat(backgroundColor,textFormat)"}})
+                # 숫자 컬럼(재고/7일판매/DOI/경과/재고금액) 고정폭 우측정렬.
+                requests.append({"repeatCell": {"range": {"sheetId": sheet_id, "startRowIndex": r_idx, "endRowIndex": r_idx + 1, "startColumnIndex": 5, "endColumnIndex": 10},
+                                                 "cell": {"userEnteredFormat": {"horizontalAlignment": "RIGHT", "textFormat": {"fontFamily": FONT_MONO, "fontSize": 9}}},
+                                                 "fields": "userEnteredFormat(horizontalAlignment,textFormat)"}})
+
+    requests.append({"updateSheetProperties": {"properties": {"sheetId": sheet_id, "gridProperties": {"frozenRowCount": 2}}, "fields": "gridProperties.frozenRowCount"}})
+
+    try:
+        service.spreadsheets().batchUpdate(spreadsheetId=spreadsheet_id, body={"requests": requests}).execute()
+    except Exception as e:
+        print(f"[runner] 대시보드 서식 적용 중 일부 실패(무시하고 진행): {e}")
 
 
 # ---------------------------------------------------------------------------
@@ -484,6 +746,12 @@ def main() -> int:
     history = read_tab_rows(service, args.spreadsheet_id, "일별재고이력")
     print(f"[runner] 품목마스터 {len(item_master)}건, 이력 {len(history)}행 로드")
 
+    new_master_rows = auto_register_new_items(item_master, sales_raw, target_date)
+    if new_master_rows:
+        unclassified = sum(1 for r in new_master_rows if r[4] == "미분류")
+        print(f"[runner] 품목마스터 신규 자동등록 {len(new_master_rows)}건"
+              + (f" (이 중 {unclassified}건은 새 브랜드라 미분류 — 품목마스터에서 조달유형 확인 필요)" if unclassified else ""))
+
     result = build_daily_rows(target_date, inventory_raw, sales_raw, item_master, history)
     print(f"[runner] 계산 완료 — 일별이력 {len(result['history'])}건 / 디자인팀_발주필요 "
           f"{len(result['design'])}건 / 관리팀_전체재고 {len(result['mgmt'])}건 / "
@@ -507,6 +775,22 @@ def main() -> int:
     replace_tab_rows(service, args.spreadsheet_id, "관리팀_전체재고", result["mgmt"])
     replace_tab_rows(service, args.spreadsheet_id, "악성재고", result["malstock"])
     replace_tab_rows(service, args.spreadsheet_id, "악성품절", result["maldead"])
+    write_status_distribution_banner(service, args.spreadsheet_id, result["mgmt"])
+
+    if new_master_rows:
+        print("[runner] 품목마스터 신규 품목 반영 중...")
+        append_item_master_rows(service, args.spreadsheet_id, new_master_rows)
+
+    print("[runner] 대시보드 반영 중...")
+    dash_meta = service.spreadsheets().get(
+        spreadsheetId=args.spreadsheet_id, fields="sheets.properties(sheetId,title)"
+    ).execute()
+    dash_id_by_title = {s["properties"]["title"]: s["properties"]["sheetId"] for s in dash_meta["sheets"]}
+    if "대시보드" in dash_id_by_title:
+        blocks = build_dashboard_blocks(result)
+        write_dashboard_tab(service, args.spreadsheet_id, dash_id_by_title["대시보드"], blocks, target_date)
+    else:
+        print("[runner] ⚠️ '대시보드' 탭이 없습니다 — ecount_sheets_setup.py를 먼저 실행하세요.")
 
     print("[runner] 완료.")
     return 0
