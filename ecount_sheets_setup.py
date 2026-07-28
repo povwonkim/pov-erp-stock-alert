@@ -61,7 +61,8 @@ HEADER_BG = {"red": 0.945, "green": 0.945, "blue": 0.945}    # #F1F1F1 — 4행(
 HEADER_FG = {"red": 0.133, "green": 0.133, "blue": 0.133}    # #222222
 HEADER_BORDER = {"red": 0.2, "green": 0.2, "blue": 0.2}      # #333333 하단 굵은 테두리
 
-STRIPE_BG = {"red": 0.980, "green": 0.973, "blue": 0.965}    # #FAF8F6 — 데이터 줄무늬(웜 오프화이트)
+STRIPE_BG = {"red": 0.941, "green": 0.925, "blue": 0.902}    # #F0EBE6 — 데이터 줄무늬(웜 오프화이트,
+# 2026-07-28 진하게 조정: 원래 #FAF8F6이 9000행 넘는 큰 표에서 너무 옅어 거의 안 보인다는 피드백)
 BODY_FG = {"red": 0.2, "green": 0.2, "blue": 0.2}            # #333333 — 순수 검정 금지
 
 FONT_BODY = "Noto Sans KR"
@@ -473,6 +474,20 @@ def write_headers(sheets_service, spreadsheet_id: str, tab_names: list[str]) -> 
                         "fields": "userEnteredFormat.numberFormat",
                     }
                 })
+
+        # 총재고는 다른 숫자 컬럼(창고별 재고 등)과 구분되는 합계 컬럼이라 항상 볼드체로 강조
+        # (2026-07-28 사용자 요청) — numeric_col_formats 다음에 둬야 폰트만 있는 그 서식을
+        # 안 덮어쓰이고 볼드가 유지된다.
+        if "총재고" in headers:
+            total_col = headers.index("총재고")
+            requests.append({
+                "repeatCell": {
+                    "range": {"sheetId": sheet_id, "startRowIndex": DATA_START_IDX, "endRowIndex": 1000,
+                               "startColumnIndex": total_col, "endColumnIndex": total_col + 1},
+                    "cell": {"userEnteredFormat": {"textFormat": {"bold": True, "fontFamily": FONT_MONO}}},
+                    "fields": "userEnteredFormat.textFormat",
+                }
+            })
 
         if "상태" in headers:
             status_col = headers.index("상태")
