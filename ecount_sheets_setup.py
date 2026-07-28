@@ -61,8 +61,8 @@ HEADER_BG = {"red": 0.945, "green": 0.945, "blue": 0.945}    # #F1F1F1 — 4행(
 HEADER_FG = {"red": 0.133, "green": 0.133, "blue": 0.133}    # #222222
 HEADER_BORDER = {"red": 0.2, "green": 0.2, "blue": 0.2}      # #333333 하단 굵은 테두리
 
-STRIPE_BG = {"red": 0.941, "green": 0.925, "blue": 0.902}    # #F0EBE6 — 데이터 줄무늬(웜 오프화이트,
-# 2026-07-28 진하게 조정: 원래 #FAF8F6이 9000행 넘는 큰 표에서 너무 옅어 거의 안 보인다는 피드백)
+STRIPE_BG = {"red": 0.961, "green": 0.961, "blue": 0.961}    # #F5F5F5 — 데이터 줄무늬(아주 옅은 그레이,
+# 2026-07-28 재조정: #FAF8F6은 너무 옅고, #F0EBE6은 너무 진했다는 피드백 — 무채색 그레이로 확정)
 BODY_FG = {"red": 0.2, "green": 0.2, "blue": 0.2}            # #333333 — 순수 검정 금지
 
 FONT_BODY = "Noto Sans KR"
@@ -438,7 +438,7 @@ def write_headers(sheets_service, spreadsheet_id: str, tab_names: list[str]) -> 
             "repeatCell": {
                 "range": {"sheetId": sheet_id, "startRowIndex": DATA_START_IDX, "endRowIndex": 1000,
                            "startColumnIndex": 0, "endColumnIndex": ncols},
-                "cell": {"userEnteredFormat": {"textFormat": {"fontFamily": FONT_BODY, "foregroundColor": BODY_FG}}},
+                "cell": {"userEnteredFormat": {"textFormat": {"fontFamily": FONT_BODY, "foregroundColor": BODY_FG, "fontSize": 9}}},
                 "fields": "userEnteredFormat.textFormat",
             }
         })
@@ -458,7 +458,7 @@ def write_headers(sheets_service, spreadsheet_id: str, tab_names: list[str]) -> 
                         "cell": {"userEnteredFormat": {
                             "numberFormat": fmt,
                             "horizontalAlignment": "RIGHT",
-                            "textFormat": {"fontFamily": FONT_MONO},
+                            "textFormat": {"fontFamily": FONT_MONO, "fontSize": 9},
                         }},
                         "fields": "userEnteredFormat(numberFormat,horizontalAlignment,textFormat)",
                     }
@@ -484,7 +484,7 @@ def write_headers(sheets_service, spreadsheet_id: str, tab_names: list[str]) -> 
                 "repeatCell": {
                     "range": {"sheetId": sheet_id, "startRowIndex": DATA_START_IDX, "endRowIndex": 1000,
                                "startColumnIndex": total_col, "endColumnIndex": total_col + 1},
-                    "cell": {"userEnteredFormat": {"textFormat": {"bold": True, "fontFamily": FONT_MONO}}},
+                    "cell": {"userEnteredFormat": {"textFormat": {"bold": True, "fontFamily": FONT_MONO, "fontSize": 9}}},
                     "fields": "userEnteredFormat.textFormat",
                 }
             })
