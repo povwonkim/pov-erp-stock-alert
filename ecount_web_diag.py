@@ -37,7 +37,13 @@ def get_today_view_link(query: str = GMAIL_QUERY_DEFAULT) -> str:
     html = get_html_body(service, messages[0]["id"])
     link = find_view_link(html)
     if not link:
-        raise SystemExit("[diag] 메일 본문에서 '수신문서보기' 링크를 못 찾았습니다.")
+        DUMP_DIR.mkdir(parents=True, exist_ok=True)
+        dump_path = DUMP_DIR / "diag_00_email_body.html"
+        dump_path.write_text(html)
+        raise SystemExit(
+            f"[diag] 메일 본문에서 '수신문서보기' 링크를 못 찾았습니다. "
+            f"본문 원본을 저장했으니 확인해보세요: {dump_path}"
+        )
     return link
 
 

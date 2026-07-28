@@ -98,11 +98,19 @@ def get_html_body(service, msg_id: str) -> str:
 
 def find_view_link(html: str) -> str | None:
     """본문 HTML에서 '수신문서보기' 팝업 링크(ViewMailContents URL)를 찾는다.
-    이 링크는 SEND_CM_ID(그날 알림 고유 ID)를 포함해서 매일 바뀌므로 매번 새로 추출해야 한다."""
-    m = re.search(r'href="(https://[^"]*ViewMailContents[^"]*)"', html)
-    if not m:
-        return None
-    return m.group(1).replace("&amp;", "&")
+    이 링크는 SEND_CM_ID(그날 알림 고유 ID)를 포함해서 매일 바뀌므로 매번 새로 추출해야 한다.
+    작은따옴표/큰따옴표, 대소문자, href 없이 그냥 텍스트로 박힌 경우까지 폭넓게 시도한다."""
+    patterns = [
+        r'href=["\'](https?://[^"\']*ViewMailContents[^"\']*)["\']',
+        r'href=["\'](https?://[^"\']*AutomationBridge[^"\']*)["\']',
+        r'(https?://[^\s"\'<>]*ViewMailContents[^\s"\'<>]*)',
+        r'(https?://[^\s"\'<>]*AutomationBridge[^\s"\'<>]*)',
+    ]
+    for pattern in patterns:
+        m = re.search(pattern, html, re.IGNORECASE)
+        if m:
+            return m.group(1).replace("&amp;", "&")
+    return None
 
 
 def main() -> int:
