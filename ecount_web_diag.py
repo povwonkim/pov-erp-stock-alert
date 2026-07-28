@@ -45,6 +45,53 @@ def dismiss_new_device_modal(page) -> bool:
     return False
 
 
+def open_browser_context(p):
+    """저장된 로그인 상태(있으면)를 재사용하는 브라우저/컨텍스트를 연다.
+    ecount_sales_scraper.py도 동일한 로직을 쓰므로 여기서 공유한다."""
+    # --disable-dev-shm-usage: 리소스가 작은 VPS/컨테이너에서 /dev/shm 용량 제한 때문에
+    # 큰 페이지를 렌더링할 때 Chromium이 멈추거나 죽는 문제의 표준 우회법(Playwright 권장).
+    browser = p.chromium.launch(headless=True, args=["--disable-dev-shm-usage"])
+    context_kwargs = {}
+    if STORAGE_STATE_PATH.exists():
+        context_kwargs["storage_state"] = str(STORAGE_STATE_PATH)
+    context = browser.new_context(**context_kwargs)
+    return browser, context
+
+
+def login_if_needed(page, web_user_id: str, web_password: str) -> None:
+    """이미 로그인 폼이 없으면(=쿠키로 인증됨) 아무것도 안 하고, 있으면 로그인 후
+    '새로운 기기' 모달까지 처리한다. ecount_sales_scraper.py도 이 함수를 그대로 쓴다."""
+    dismiss_new_device_modal(page)
+
+    # 2026-07-28 실제 폼 구조 확인: id="txtUserId"/id="txtPass"/버튼 id="save"
+    # (onclick="excuteLogin()"). 텍스트 기반 탐색은 엉뚱한 요소를 집을 수 있어 id로 직접 지정.
+    pw_inputs = page.locator("#txtPass")
+    if pw_inputs.count() == 0:
+        return
+
+    id_input = page.locator("#txtUserId")
+    if id_input.count() > 0:
+        id_input.fill(web_user_id)
+    pw_inputs.fill(web_password)
+
+    save_btn = page.locator("#save")
+    if save_btn.count() > 0:
+        save_btn.click()
+        try:
+            page.wait_for_load_state("networkidle", timeout=15000)
+        except Exception:
+            pass
+        page.wait_for_timeout(2000)  # SPA/JS 리다이렉트 여유
+
+    # 로그인 직후에도 "새로운 기기" 모달이 뜰 수 있어 한 번 더 확인.
+    dismiss_new_device_modal(page)
+
+
+def save_storage_state(context) -> None:
+    STORAGE_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    context.storage_state(path=str(STORAGE_STATE_PATH))
+
+
 def get_today_view_link(query: str = GMAIL_QUERY_DEFAULT) -> str:
     from googleapiclient.discovery import build
 
@@ -88,14 +135,9 @@ def main() -> int:
     DUMP_DIR.mkdir(parents=True, exist_ok=True)
 
     with sync_playwright() as p:
-        # --disable-dev-shm-usage: 리소스가 작은 VPS/컨테이너에서 /dev/shm 용량 제한 때문에
-        # 큰 페이지를 렌더링할 때 Chromium이 멈추거나 죽는 문제의 표준 우회법(Playwright 권장).
-        browser = p.chromium.launch(headless=True, args=["--disable-dev-shm-usage"])
-        context_kwargs = {}
         if STORAGE_STATE_PATH.exists():
             print(f"[diag] 저장된 로그인 상태 재사용: {STORAGE_STATE_PATH}")
-            context_kwargs["storage_state"] = str(STORAGE_STATE_PATH)
-        context = browser.new_context(**context_kwargs)
+        browser, context = open_browser_context(p)
         page = context.new_page()
         print("[diag] 페이지 로드 중...")
         page.goto(link, wait_until="networkidle", timeout=60000)
@@ -104,39 +146,11 @@ def main() -> int:
         (DUMP_DIR / "diag_01_initial.html").write_text(page.content())
         print(f"[diag] 초기 화면 저장: {DUMP_DIR / 'diag_01_initial.png'} / .html")
 
-        # "새로운 기기 로그인 알림" 모달이 로그인 폼보다 먼저(또는 위에 겹쳐서) 뜨는 걸 확인함 —
-        # 이걸 먼저 처리해야 뒤에 깔린 로그인 폼과 정상적으로 상호작용할 수 있다.
-        dismiss_new_device_modal(page)
-
-        # 로그인 폼이 있는지 확인 (비밀번호 입력창 존재 여부로 판단).
-        # 2026-07-28 실제 폼 구조 확인: id="txtUserId"/id="txtPass"/버튼 id="save"
-        # (onclick="excuteLogin()"). 텍스트 기반 탐색은 엉뚱한 요소를 집을 수 있어 id로 직접 지정.
-        pw_inputs = page.locator("#txtPass")
-        if pw_inputs.count() > 0:
-            print(f"[diag] 로그인 폼 발견(#txtPass) — 로그인 시도...")
-            id_input = page.locator("#txtUserId")
-            if id_input.count() > 0:
-                id_input.fill(web_user_id)
-            pw_inputs.fill(web_password)
-
+        had_login_form = page.locator("#txtPass").count() > 0
+        login_if_needed(page, web_user_id, web_password)
+        if had_login_form:
             page.screenshot(path=str(DUMP_DIR / "diag_02_filled.png"), full_page=True)
-            print(f"[diag] 입력 후 화면 저장: {DUMP_DIR / 'diag_02_filled.png'}")
-
-            save_btn = page.locator("#save")
-            if save_btn.count() > 0:
-                save_btn.click()
-                try:
-                    page.wait_for_load_state("networkidle", timeout=15000)
-                except Exception as e:
-                    print(f"[diag]   networkidle 대기 타임아웃(무시하고 계속): {e}")
-                page.wait_for_timeout(2000)  # SPA/JS 리다이렉트 여유
-            else:
-                print("[diag]   #save 버튼을 못 찾음 — 폼 구조가 바뀌었을 수 있음")
-
             print(f"[diag] 로그인 시도 후 현재 URL: {page.url}")
-            # 로그인 직후에도 "새로운 기기" 모달이 뜰 수 있어 한 번 더 확인.
-            dismiss_new_device_modal(page)
-            # 로그인 실패 시 뜨는 것으로 보이는 부트스트랩 alert 텍스트 확인.
             alert_box = page.locator(".alert, [class*='alert']")
             if alert_box.count() > 0:
                 for i in range(min(alert_box.count(), 3)):
@@ -146,11 +160,8 @@ def main() -> int:
         else:
             print("[diag] 로그인 폼(#txtPass) 없음 — 이미 인증된 상태이거나 팝업 구조가 다름")
 
-        # 로그인 상태(쿠키)를 저장해서 다음 실행에서 재사용 — "새로운 기기" 모달을 다시
-        # 안 마주치는지는 다음 실행에서 실제로 확인해야 한다(사람이 등록해도 다시 뜬 경험이
-        # 있다고 함 — 쿠키 기반이 아닐 수도 있으니 검증 필요).
-        STORAGE_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
-        context.storage_state(path=str(STORAGE_STATE_PATH))
+        # 로그인 상태(쿠키)를 저장해서 다음 실행에서 재사용.
+        save_storage_state(context)
         print(f"[diag] 로그인 상태 저장: {STORAGE_STATE_PATH}")
 
         # 로그인 후 페이지는 표가 1000행 넘게 나오기도 해서(2026-07-28 확인: 1004개 <tr>),

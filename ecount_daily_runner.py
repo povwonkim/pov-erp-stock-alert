@@ -719,14 +719,17 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--spreadsheet-id", required=True)
     ap.add_argument("--base-date", help="YYYY-MM-DD (기본: 실행일 기준 어제, KST)")
-    ap.add_argument("--sales-xlsx", help="판매현황 엑셀 경로 (미지정 시 Gmail에서 자동 다운로드)")
+    ap.add_argument("--sales-xlsx", help="판매현황 엑셀 경로를 수동 지정(테스트용). 미지정 시 기본 동작인 "
+                                          "웹 스크래핑으로 대체됨 — 자동알림 메일에는 더 이상 첨부가 없음(2026-07-28 확인)")
     ap.add_argument("--gmail-query", default='from:ecountnotice@ecount.com has:attachment newer_than:2d',
-                     help="Gmail 검색 쿼리 (기본값: 이카운트 발신자로만 특정 — subject: 필터는 한글 제목에서 "
-                          "매칭이 안 되는 경우가 있어 뺌, 2026-07-28 실메일로 확인)")
+                     help="--sales-xlsx 없이 엑셀 첨부로 받던 옛 경로에서만 쓰임(현재는 미사용, 하위호환용)")
     ap.add_argument("--dry-run", action="store_true", help="계산만 하고 시트에 쓰지 않음")
     ap.add_argument("--use-cached-inventory", action="store_true",
                      help="직전 실행에서 저장된 재고API 캐시를 재사용(창고당 10분 대기 없이 즉시) — "
-                          "재고 조회는 성공했는데 그 다음 단계(Gmail 등)에서 실패해 재시도할 때 유용")
+                          "재고 조회는 성공했는데 그 다음 단계(웹 스크래핑 등)에서 실패해 재시도할 때 유용")
+    ap.add_argument("--use-cached-sales", action="store_true",
+                     help="직전 실행에서 저장된 판매현황 스크래핑 캐시를 재사용(Gmail/로그인 없이 즉시) — "
+                          "스크래핑은 성공했는데 그 다음 단계에서 실패해 재시도할 때 유용")
     args = ap.parse_args()
 
     target_date = date.fromisoformat(args.base_date) if args.base_date else (datetime.now(KST).date() - timedelta(days=1))
@@ -747,15 +750,23 @@ def main() -> int:
         inventory_cache_path.write_text(json.dumps(inventory_raw, ensure_ascii=False))
         print(f"[runner] 재고 원본 캐시 저장: {inventory_cache_path} (다음 실행에서 --use-cached-inventory로 재사용 가능)")
 
+    sales_cache_path = DUMP_DIR / f"sales_raw_{target_date.isoformat()}.json"
     if args.sales_xlsx:
-        sales_path = Path(args.sales_xlsx)
+        sales_raw = parse_sales_xlsx(Path(args.sales_xlsx))
+        print(f"[runner] 판매 원본 {len(sales_raw)}건 (전체 창고, 출처={args.sales_xlsx})")
+    elif args.use_cached_sales:
+        if not sales_cache_path.exists():
+            raise SystemExit(f"[runner] 캐시 파일이 없습니다: {sales_cache_path} — --use-cached-sales 없이 다시 실행하세요.")
+        sales_raw = json.loads(sales_cache_path.read_text())
+        print(f"[runner] 판매 원본 캐시 사용: {sales_cache_path} ({len(sales_raw)}건)")
     else:
-        print(f"[runner] Gmail에서 판매현황 첨부 다운로드 중... (query={args.gmail_query!r})")
-        sales_path = fetch_sales_xlsx_from_gmail(
-            args.gmail_query, DUMP_DIR / f"sales_status_{target_date.isoformat()}.xlsx"
-        )
-    sales_raw = parse_sales_xlsx(sales_path)
-    print(f"[runner] 판매 원본 {len(sales_raw)}건 (전체 창고, 출처={sales_path})")
+        print("[runner] 이카운트 판매현황 웹 리포트 스크래핑 중... (Gmail 링크 → 로그인 → 표 읽기)")
+        from ecount_sales_scraper import scrape_sales_status
+        sales_raw = scrape_sales_status()
+        print(f"[runner] 판매 원본 {len(sales_raw)}건 (전체 창고, 웹 스크래핑)")
+        sales_cache_path.parent.mkdir(parents=True, exist_ok=True)
+        sales_cache_path.write_text(json.dumps(sales_raw, ensure_ascii=False))
+        print(f"[runner] 판매 원본 캐시 저장: {sales_cache_path} (다음 실행에서 --use-cached-sales로 재사용 가능)")
 
     creds = _load_creds()
     from googleapiclient.discovery import build
