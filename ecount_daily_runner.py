@@ -47,21 +47,21 @@ RISK_WARN_BY_TYPE = {
 }
 
 PRIORITY_BY_STATUS = {
-    "🚨 위험": 1, "🆕 품절-신규": 1,
-    "⚠️ 주의": 2, "🔴 품절-지속": 2,
-    "👀 재고소량·판매없음": 3,
-    "🐢 품절-장기": 3,
+    "🔴 위험": 1, "🔴 품절-신규": 1,
+    "🟠 주의": 2, "🟠 품절-지속": 2,
+    "🟡 재고소량": 3,
+    "⚫ 품절-장기": 3,
 }
 
 ACTION_BY_STATUS = {
-    "🔴‼️ 초과주문": "재고 데이터 확인 필요",
-    "🚨 위험": "긴급 제작 필요",
-    "🆕 품절-신규": "긴급 제작 필요",
-    "⚠️ 주의": "제작 검토",
-    "🔴 품절-지속": "제작 검토",
-    "👀 재고소량·판매없음": "마케팅 부스트 또는 정리 검토",
+    "🔴 초과주문": "재고 데이터 확인 필요",
+    "🔴 위험": "긴급 제작 필요",
+    "🔴 품절-신규": "긴급 제작 필요",
+    "🟠 주의": "제작 검토",
+    "🟠 품절-지속": "제작 검토",
+    "🟡 재고소량": "마케팅 부스트 또는 정리 검토",
     "🔵 과잉": "프로모션/할인 검토",
-    "정상": "-",
+    "🟢 정상": "-",
 }
 
 
@@ -257,28 +257,31 @@ def append_history_rows(service, spreadsheet_id: str, target_date_str: str, new_
 # ---------------------------------------------------------------------------
 
 def determine_status(재고: float, 최근7일: float, 품절경과일: int, 조달유형: str | None) -> str:
+    # 상태 이모지는 상태별 개별 아이콘이 아니라 6색 동그라미로 통일한다(2026-07-28, 전사 배포용
+    # "읽는 법" 탭 도입과 함께 확정): 🔴 지금/오늘 · 🟠 곧/이번주 · 🟡 확인 · 🔵 과잉 · ⚫ 끝(방치) ·
+    # 🟢 정상. STATUS_COLOR_RULES의 조건부서식은 이모지가 아니라 한글 부분일치라 영향 없음.
     if 재고 < 0:
-        return "🔴‼️ 초과주문"
+        return "🔴 초과주문"
     if 재고 == 0:
         if 품절경과일 <= 9:
-            return "🆕 품절-신규"
+            return "🔴 품절-신규"
         if 품절경과일 <= 29:
-            return "🔴 품절-지속"
-        return "🐢 품절-장기"
+            return "🟠 품절-지속"
+        return "⚫ 품절-장기"
     if 재고 <= 5 and 최근7일 == 0:
-        return "👀 재고소량·판매없음"
+        return "🟡 재고소량"
     if 최근7일 > 0:
         doi = 재고 / (최근7일 / 7)
         risk, warn = RISK_WARN_BY_TYPE.get(조달유형 or "", (None, None))
         if risk is not None:
             if doi <= risk:
-                return "🚨 위험"
+                return "🔴 위험"
             if doi <= warn:
-                return "⚠️ 주의"
+                return "🟠 주의"
         if doi > 180:
             return "🔵 과잉"
-        return "정상"
-    return "정상"
+        return "🟢 정상"
+    return "🟢 정상"
 
 
 def compute_doi(재고: float, 최근7일: float) -> float | str:
@@ -388,7 +391,7 @@ def build_daily_rows(target_date: date, inventory_raw: list[dict], sales_raw: li
         미입고경과일 = (target_date - date.fromisoformat(최근입고일)).days if 최근입고일 else ""
 
         # ---- 3층 결과물 라우팅 ----
-        if 상태 == "🐢 품절-장기":
+        if 상태 == "⚫ 품절-장기":
             if 최근90일 > 0:
                 design_rows.append([
                     브랜드, code, 품목명, 조달유형, 상태, PRIORITY_BY_STATUS.get(상태, 99),
