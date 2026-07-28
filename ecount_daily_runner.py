@@ -282,7 +282,9 @@ def determine_status(재고: float, 최근7일: float, 품절경과일: int, 조
 
 
 def compute_doi(재고: float, 최근7일: float) -> float | str:
-    if 최근7일 <= 0:
+    # 재고 0 이하(품절/초과주문)일 때도 빈칸 — 안 그러면 초과주문(음수 재고)에서 DOI가 음수로
+    # 나와 의미 없는 값이 찍힌다 (설계 스펙 "POV_재고관리_마스터_설계.md" 명시 사항).
+    if 최근7일 <= 0 or 재고 <= 0:
         return ""
     return round(재고 / (최근7일 / 7), 1)
 
