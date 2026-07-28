@@ -110,9 +110,17 @@ class EcountClient:
         resp = requests.post(url, json=payload, timeout=_DEFAULT_TIMEOUT)
         try:
             data = resp.json()
-        except ValueError as e:
-            resp.raise_for_status()  # 200인데 JSON 파싱만 실패한 경우는 아래에서 별도 에러로
-            raise EcountError(f"JSON 파싱 실패: {url}", raw=resp.text) from e
+        except ValueError:
+            # 바디가 JSON이 아님 — 성공(200)인데 파싱만 실패한 경우와, 애초에 실패 응답(빈 바디
+            # 등)이라 파싱할 게 없는 경우를 구분해서 보여준다. 게이트웨이/WAF가 이카운트 앱까지
+            # 가기 전에 막았을 가능성이 있어 응답 헤더도 같이 보여준다.
+            if resp.ok:
+                raise EcountError(f"JSON 파싱 실패(200인데 바디가 JSON 아님): {url}", raw=resp.text)
+            raise EcountError(
+                f"HTTP {resp.status_code} {url} — 바디가 JSON 아님(빈 바디 또는 게이트웨이 응답으로 "
+                f"추정). 바디 미리보기: {resp.text[:300]!r} / 응답헤더: {dict(resp.headers)}",
+                raw=resp.text,
+            )
         if not resp.ok:
             # raise_for_status()는 응답 바디(이카운트가 왜 거부했는지)를 안 보여주고 그냥
             # HTTPError만 던져서 원인 파악이 안 됨 — 바디를 먼저 파싱해 메시지에 포함시킨다.
