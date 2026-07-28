@@ -54,6 +54,13 @@ RISK_WARN_BY_TYPE = {
     "해외수입": (21, 35),
 }
 
+# 판매로 안 잡히는 비품 브랜드는 DOI(판매속도 기반) 로직이 원천적으로 안 맞는다 — 고객에게
+# 파는 게 아니라 소모되기만 해서 최근7일 판매량이 항상 0으로 잡히고, 그러면 determine_status()가
+# 위험/주의/과잉을 절대 못 만난다(재고>5면 그냥 계속 정상). 대신 단순 재고 임계값으로 판정한다.
+# 2026-07-28 사용자 확정: POV_application(쇼핑백/봉투 등) 제작도 ~1개월 걸려 재고 1000개 이하면
+# 재발주 시점(품절/마이너스재고는 그대로 determine_status()가 판정).
+NON_SALES_REORDER_THRESHOLD = {"POV_application": 1000}
+
 PRIORITY_BY_STATUS = {
     "🔴 위험": 1, "🔴 품절-신규": 1,
     "🟠 주의": 2, "🟠 품절-지속": 2,
@@ -428,7 +435,11 @@ def build_daily_rows(target_date: date, inventory_raw: list[dict], sales_raw: li
                 최근7일 += qty
             최근90일 += qty
 
-        상태 = determine_status(재고, 최근7일, 품절경과일, 조달유형 if 조달유형 != "미분류" else None)
+        reorder_threshold = NON_SALES_REORDER_THRESHOLD.get(브랜드)
+        if reorder_threshold is not None and 재고 > 0:
+            상태 = "🟠 주의" if 재고 <= reorder_threshold else "🟢 정상"
+        else:
+            상태 = determine_status(재고, 최근7일, 품절경과일, 조달유형 if 조달유형 != "미분류" else None)
         doi = compute_doi(재고, 최근7일)
         조치방안 = ACTION_BY_STATUS.get(상태, "")
 
