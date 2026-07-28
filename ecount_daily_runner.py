@@ -721,6 +721,10 @@ def write_dashboard_tab(service, spreadsheet_id: str, sheet_id: int, blocks: lis
                 requests.append({"repeatCell": {"range": {"sheetId": sheet_id, "startRowIndex": r_idx, "endRowIndex": r_idx + 1, "startColumnIndex": 5, "endColumnIndex": 10},
                                                  "cell": {"userEnteredFormat": {"horizontalAlignment": "RIGHT", "textFormat": {"fontFamily": FONT_MONO, "fontSize": 9}}},
                                                  "fields": "userEnteredFormat(horizontalAlignment,textFormat)"}})
+                # 재고는 관리팀_전체재고의 총재고와 동일하게 항상 볼드체로 강조(2026-07-28 사용자 요청).
+                requests.append({"repeatCell": {"range": {"sheetId": sheet_id, "startRowIndex": r_idx, "endRowIndex": r_idx + 1, "startColumnIndex": 5, "endColumnIndex": 6},
+                                                 "cell": {"userEnteredFormat": {"textFormat": {"bold": True, "fontFamily": FONT_MONO, "fontSize": 9}}},
+                                                 "fields": "userEnteredFormat.textFormat"}})
 
     requests.append({"updateSheetProperties": {"properties": {"sheetId": sheet_id, "gridProperties": {"frozenRowCount": 2}}, "fields": "gridProperties.frozenRowCount"}})
 
