@@ -21,6 +21,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import time
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -723,15 +724,28 @@ def main() -> int:
                      help="Gmail 검색 쿼리 (기본값: 이카운트 발신자로만 특정 — subject: 필터는 한글 제목에서 "
                           "매칭이 안 되는 경우가 있어 뺌, 2026-07-28 실메일로 확인)")
     ap.add_argument("--dry-run", action="store_true", help="계산만 하고 시트에 쓰지 않음")
+    ap.add_argument("--use-cached-inventory", action="store_true",
+                     help="직전 실행에서 저장된 재고API 캐시를 재사용(창고당 10분 대기 없이 즉시) — "
+                          "재고 조회는 성공했는데 그 다음 단계(Gmail 등)에서 실패해 재시도할 때 유용")
     args = ap.parse_args()
 
     target_date = date.fromisoformat(args.base_date) if args.base_date else (datetime.now(KST).date() - timedelta(days=1))
     base_date_str = target_date.strftime("%Y%m%d")
     print(f"[runner] 기준일(TARGET_DATE) = {target_date.isoformat()}")
 
-    print("[runner] 이카운트 재고API 조회 중...")
-    inventory_raw = fetch_inventory_raw(base_date_str)
-    print(f"[runner] 재고 원본 {len(inventory_raw)}건 (전체 창고)")
+    inventory_cache_path = DUMP_DIR / f"inventory_raw_{target_date.isoformat()}.json"
+    if args.use_cached_inventory:
+        if not inventory_cache_path.exists():
+            raise SystemExit(f"[runner] 캐시 파일이 없습니다: {inventory_cache_path} — --use-cached-inventory 없이 다시 실행하세요.")
+        inventory_raw = json.loads(inventory_cache_path.read_text())
+        print(f"[runner] 재고 원본 캐시 사용: {inventory_cache_path} ({len(inventory_raw)}건)")
+    else:
+        print("[runner] 이카운트 재고API 조회 중...")
+        inventory_raw = fetch_inventory_raw(base_date_str)
+        print(f"[runner] 재고 원본 {len(inventory_raw)}건 (전체 창고)")
+        inventory_cache_path.parent.mkdir(parents=True, exist_ok=True)
+        inventory_cache_path.write_text(json.dumps(inventory_raw, ensure_ascii=False))
+        print(f"[runner] 재고 원본 캐시 저장: {inventory_cache_path} (다음 실행에서 --use-cached-inventory로 재사용 가능)")
 
     if args.sales_xlsx:
         sales_path = Path(args.sales_xlsx)
