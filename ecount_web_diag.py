@@ -24,6 +24,25 @@ from ecount_client import _load_secrets
 
 DUMP_DIR = Path(__file__).parent / "cron_tracking" / "ecount"
 GMAIL_QUERY_DEFAULT = "from:ecountnotice@ecount.com newer_than:2d"
+# 브라우저 로그인 상태(쿠키 등)를 저장해뒀다가 재사용 — 안 그러면 매번 새 브라우저로 접속할
+# 때마다 "새로운 기기 로그인 알림" 팝업이 뜨는 걸 실제로 확인함(2026-07-28).
+STORAGE_STATE_PATH = Path(__file__).parent / ".secrets" / "ecount_web_state.json"
+
+
+def dismiss_new_device_modal(page) -> bool:
+    """'새로운 기기 로그인 알림' 모달이 보이면 [등록]을 눌러 이 브라우저를 신뢰하게 만든다.
+    처리했으면 True. 등록해두면 STORAGE_STATE_PATH에 저장된 쿠키로 다음 실행부턴 이 모달
+    자체가 안 뜬다."""
+    register_btn = page.get_by_role("button", name="등록", exact=True)
+    try:
+        if register_btn.count() > 0 and register_btn.first.is_visible():
+            print("[diag] '새로운 기기 로그인 알림' 모달 발견 — [등록] 클릭")
+            register_btn.first.click()
+            page.wait_for_timeout(1500)
+            return True
+    except Exception as e:
+        print(f"[diag]   모달 처리 중 예외(무시): {e}")
+    return False
 
 
 def get_today_view_link(query: str = GMAIL_QUERY_DEFAULT) -> str:
@@ -70,13 +89,22 @@ def main() -> int:
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
-        page = browser.new_page()
+        context_kwargs = {}
+        if STORAGE_STATE_PATH.exists():
+            print(f"[diag] 저장된 로그인 상태 재사용: {STORAGE_STATE_PATH}")
+            context_kwargs["storage_state"] = str(STORAGE_STATE_PATH)
+        context = browser.new_context(**context_kwargs)
+        page = context.new_page()
         print("[diag] 페이지 로드 중...")
         page.goto(link, wait_until="networkidle", timeout=60000)
 
         page.screenshot(path=str(DUMP_DIR / "diag_01_initial.png"), full_page=True)
         (DUMP_DIR / "diag_01_initial.html").write_text(page.content())
         print(f"[diag] 초기 화면 저장: {DUMP_DIR / 'diag_01_initial.png'} / .html")
+
+        # "새로운 기기 로그인 알림" 모달이 로그인 폼보다 먼저(또는 위에 겹쳐서) 뜨는 걸 확인함 —
+        # 이걸 먼저 처리해야 뒤에 깔린 로그인 폼과 정상적으로 상호작용할 수 있다.
+        dismiss_new_device_modal(page)
 
         # 로그인 폼이 있는지 확인 (비밀번호 입력창 존재 여부로 판단).
         # 2026-07-28 실제 폼 구조 확인: id="txtUserId"/id="txtPass"/버튼 id="save"
@@ -104,6 +132,8 @@ def main() -> int:
                 print("[diag]   #save 버튼을 못 찾음 — 폼 구조가 바뀌었을 수 있음")
 
             print(f"[diag] 로그인 시도 후 현재 URL: {page.url}")
+            # 로그인 직후에도 "새로운 기기" 모달이 뜰 수 있어 한 번 더 확인.
+            dismiss_new_device_modal(page)
             # 로그인 실패 시 뜨는 것으로 보이는 부트스트랩 alert 텍스트 확인.
             alert_box = page.locator(".alert, [class*='alert']")
             if alert_box.count() > 0:
@@ -113,6 +143,13 @@ def main() -> int:
                         print(f"[diag]   ⚠️ 알림창 텍스트[{i}]: {txt!r}")
         else:
             print("[diag] 로그인 폼(#txtPass) 없음 — 이미 인증된 상태이거나 팝업 구조가 다름")
+
+        # 로그인 상태(쿠키)를 저장해서 다음 실행에서 재사용 — "새로운 기기" 모달을 다시
+        # 안 마주치는지는 다음 실행에서 실제로 확인해야 한다(사람이 등록해도 다시 뜬 경험이
+        # 있다고 함 — 쿠키 기반이 아닐 수도 있으니 검증 필요).
+        STORAGE_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        context.storage_state(path=str(STORAGE_STATE_PATH))
+        print(f"[diag] 로그인 상태 저장: {STORAGE_STATE_PATH}")
 
         page.screenshot(path=str(DUMP_DIR / "diag_03_after_login.png"), full_page=True)
         (DUMP_DIR / "diag_03_after_login.html").write_text(page.content())
