@@ -34,7 +34,14 @@ from typing import Any
 import requests
 
 _SECRETS_FILE = Path(__file__).parent / ".secrets" / "ecount.json"
+_SESSION_CACHE_FILE = Path(__file__).parent / ".secrets" / "ecount_session.json"
 _DEFAULT_TIMEOUT = 30
+
+# 이카운트 실서버(prod) 전송기준(2026-07-28 공식 문서 확인): 로그인(Zone+로그인)과 조회
+# (발주서조회/품목조회/재고현황/창고별재고현황)는 각각 종류별로 1회/10분. 스크립트를 실행할
+# 때마다 새로 로그인하면 이 한도를 금방 넘긴다 — 그래서 세션ID를 파일에 캐시해두고 재사용한다.
+# (이카운트 문서: "세션ID는 설정된 시간 동안 재사용 가능하며, API를 한 번 호출하면 다시 그
+# 시간 동안 사용할 수 있다" — 즉 계속 쓰는 한 만료되지 않는다.)
 
 
 class EcountError(RuntimeError):
@@ -85,11 +92,41 @@ class EcountClient:
         self.zone = zone or creds.get("ZONE") or ""
         self.lan_type = lan_type
         self.session_id: str = ""
+        self._session_from_cache = False
 
         if not self.com_code:
             raise EcountError("ECOUNT_COM_CODE(회사코드)가 없습니다. .secrets/ecount.json 또는 환경변수 설정 필요.")
         if not self.api_cert_key:
             raise EcountError("ECOUNT_API_CERT_KEY(인증키)가 없습니다.")
+
+        # zone/session_id를 명시적으로 안 받았으면 캐시에서 복원 시도 — 로그인 API도 1회/10분
+        # 제한이라, 스크립트 실행할 때마다 새로 로그인하면 금방 막힌다.
+        if not zone or not self.session_id:
+            cached = self._load_session_cache()
+            if cached:
+                self.zone = self.zone or cached.get("zone", "")
+                if cached.get("session_id"):
+                    self.session_id = cached["session_id"]
+                    self._session_from_cache = True
+
+    def _load_session_cache(self) -> dict | None:
+        if not _SESSION_CACHE_FILE.exists():
+            return None
+        try:
+            data = json.loads(_SESSION_CACHE_FILE.read_text())
+        except Exception:
+            return None
+        # 다른 계정/모드의 캐시를 잘못 재사용하지 않게 회사코드+모드가 일치할 때만 쓴다.
+        if data.get("com_code") != self.com_code or data.get("mode") != self.mode:
+            return None
+        return data
+
+    def _save_session_cache(self) -> None:
+        _SESSION_CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        _SESSION_CACHE_FILE.write_text(json.dumps({
+            "com_code": self.com_code, "mode": self.mode,
+            "zone": self.zone, "session_id": self.session_id,
+        }, ensure_ascii=False, indent=2))
 
     # ---- 도메인 구성 ----
     @property
@@ -159,6 +196,8 @@ class EcountClient:
         if not sid:
             raise EcountError("로그인 응답에서 SESSION_ID를 찾지 못했습니다.", raw=data)
         self.session_id = str(sid)
+        self._session_from_cache = False
+        self._save_session_cache()
         return self.session_id
 
     def ensure_session(self) -> None:
@@ -167,10 +206,22 @@ class EcountClient:
 
     # ---- 3) 인증된 API 호출 ----
     def call(self, path: str, payload: dict | None = None) -> dict:
-        """SESSION_ID를 붙여 POST 호출. path 예: 'InventoryBalance/GetListInventoryBalanceStatusByLocation'"""
+        """SESSION_ID를 붙여 POST 호출. path 예: 'InventoryBalance/GetListInventoryBalanceStatusByLocation'
+
+        캐시된 세션이 만료돼서 실패한 경우에만 한 번 재로그인 후 재시도한다(로그인도 1회/10분
+        제한이라 매번 재시도하면 오히려 더 막히므로, 캐시 세션을 썼을 때만 시도).
+        """
         self.ensure_session()
         url = f"{self._base_url()}/{path.lstrip('/')}?SESSION_ID={self.session_id}"
-        return self._post(url, payload or {})
+        try:
+            return self._post(url, payload or {})
+        except EcountError:
+            if not self._session_from_cache:
+                raise
+            self.session_id = ""
+            self.login()
+            url = f"{self._base_url()}/{path.lstrip('/')}?SESSION_ID={self.session_id}"
+            return self._post(url, payload or {})
 
     # ---- 편의 메서드 ----
     def inventory_balance_by_location(self, base_date: str, **extra) -> dict:

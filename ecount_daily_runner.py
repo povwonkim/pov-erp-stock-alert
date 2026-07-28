@@ -21,6 +21,7 @@
 from __future__ import annotations
 
 import argparse
+import time
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
@@ -32,6 +33,11 @@ from ecount_sheets_setup import TABS, OFFLINE_WAREHOUSES, OFFLINE_WAREHOUSE_CODE
 
 KST = timezone(timedelta(hours=9))
 DUMP_DIR = Path(__file__).parent / "cron_tracking" / "ecount"
+
+# 이카운트 실서버 조회 API(재고현황/창고별재고현황 포함)는 종류당 1회/10분 제한(2026-07-28
+# 공식 문서 확인, HTTP 412 = "API 전송 횟수 기준을 넘은 경우"). 오프라인 창고 4곳을 각각
+# 조회하려면 그만큼 간격을 둬야 한다 — 10분(600초) + 여유.
+INVENTORY_CALL_INTERVAL_SEC = 610
 
 # DOI 위험/주의 임계값 (일) — README "DOI 기반 우선순위 체계" 표와 동일.
 RISK_WARN_BY_TYPE = {
@@ -70,10 +76,18 @@ def fetch_inventory_raw(base_date: str) -> list[dict]:
     (README '탐사 결과' 참고). WH_CD로 창고를 하나씩 지정해 호출하면 건수가 훨씬 적게
     나오는 것을 실제로 확인(2026-07-28, WH_CD=00014 단독 6676건 < 전체 10000건) —
     이 시스템은 애초에 오프라인 4개 창고 외엔 안 쓰므로, 온라인 창고는 아예 조회하지 않는다.
+
+    단, 실서버 조회 API는 종류당 1회/10분 제한이 있어(공식 문서 확인, 2026-07-28) 창고 4개를
+    연달아 부르면 두 번째부터 무조건 막힌다. 그래서 호출 사이에 실제로 대기한다 — 총 소요시간이
+    30~40분이지만, 하루 한 번 도는 배치라 문제없다.
     """
     client = EcountClient()
     rows = []
-    for wh_name, wh_code in OFFLINE_WAREHOUSE_CODES.items():
+    for i, (wh_name, wh_code) in enumerate(OFFLINE_WAREHOUSE_CODES.items()):
+        if i > 0:
+            print(f"[runner] 조회 API 1회/10분 제한 — 다음 창고까지 {INVENTORY_CALL_INTERVAL_SEC}초 대기...")
+            time.sleep(INVENTORY_CALL_INTERVAL_SEC)
+        print(f"[runner] {wh_name}(WH_CD={wh_code}) 조회 중...")
         data = client.inventory_balance_by_location(base_date, WH_CD=wh_code)
         result = data.get("Data", {}).get("Result") or []
         if len(result) >= 10000:
