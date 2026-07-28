@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import re
 from pathlib import Path
 
 from google.auth.transport.requests import Request
@@ -76,11 +77,41 @@ def download_first_attachment(service, msg_id: str, out_path: Path) -> Path | No
     return None
 
 
+def get_html_body(service, msg_id: str) -> str:
+    """메일 본문(HTML) 전체를 합쳐서 반환. 자동알림 메일은 첨부 없이 '수신문서보기' 링크만
+    본문에 들어있는 경우가 있어(2026-07-28 실메일로 확인), 이 링크를 뽑는 데 쓴다."""
+    msg = service.users().messages().get(userId="me", id=msg_id, format="full").execute()
+
+    def _walk(payload):
+        mime = payload.get("mimeType", "")
+        body = payload.get("body", {})
+        if mime.startswith("text/html") and body.get("data"):
+            yield body["data"]
+        for part in payload.get("parts", []) or []:
+            yield from _walk(part)
+
+    html = ""
+    for data in _walk(msg["payload"]):
+        html += base64.urlsafe_b64decode(data).decode("utf-8", errors="ignore")
+    return html
+
+
+def find_view_link(html: str) -> str | None:
+    """본문 HTML에서 '수신문서보기' 팝업 링크(ViewMailContents URL)를 찾는다.
+    이 링크는 SEND_CM_ID(그날 알림 고유 ID)를 포함해서 매일 바뀌므로 매번 새로 추출해야 한다."""
+    m = re.search(r'href="(https://[^"]*ViewMailContents[^"]*)"', html)
+    if not m:
+        return None
+    return m.group(1).replace("&amp;", "&")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--query", default="has:attachment newer_than:2d", help="Gmail 검색 쿼리")
     ap.add_argument("--list", action="store_true", help="목록만 출력하고 다운로드는 안 함")
     ap.add_argument("--download-to", help="가장 최근 매치 메일의 첫 엑셀 첨부를 이 경로로 저장")
+    ap.add_argument("--find-link", action="store_true",
+                     help="가장 최근 매치 메일 본문에서 '수신문서보기' 링크를 찾아 출력(첨부 없는 알림 메일용)")
     args = ap.parse_args()
 
     creds = _load_creds()
@@ -95,6 +126,17 @@ def main() -> int:
     for m in messages:
         info = describe(service, m["id"])
         print(f"  - id={info['id']}  From={info.get('From')}  Subject={info.get('Subject')}  Date={info.get('Date')}")
+
+    if args.find_link:
+        latest_id = messages[0]["id"]
+        html = get_html_body(service, latest_id)
+        link = find_view_link(html)
+        if link:
+            print(f"[gmail] 수신문서보기 링크: {link}")
+        else:
+            print("[gmail] 본문에서 링크를 못 찾았습니다 — 본문 HTML 구조가 다를 수 있습니다.")
+            return 1
+        return 0
 
     if args.list or not args.download_to:
         return 0
