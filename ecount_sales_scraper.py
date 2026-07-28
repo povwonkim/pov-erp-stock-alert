@@ -105,13 +105,28 @@ def scrape_sales_status() -> list[dict]:
             save_storage_state(context)
 
             # 표는 <table><tr><td>...</td></tr>...</table> 구조(2026-07-28 확인, 1004행 규모).
+            # 이 페이지엔 <table>이 2개 있는데(레이아웃용 + 실제 데이터), 실제 데이터 표는
+            # networkidle 이후에도 비동기로 늦게 채워질 때가 있어(2026-07-28, 같은 코드로도
+            # 성공/실패가 들쭉날쭉하게 재현됨) — 데이터가 어느 정도 찰 때까지 명시적으로 기다린다.
+            try:
+                page.wait_for_function(
+                    "document.querySelectorAll('table tr').length > 10", timeout=20000
+                )
+            except Exception as e:
+                print(f"[scraper]   표 로딩 대기 타임아웃(무시하고 계속): {e}")
+
             # 큰 표라 페이지 전체를 순회하는 JS 한 번으로 셀 텍스트를 뽑아 CDP 왕복을 최소화한다
             # (locator.nth() 반복 호출은 행이 많을수록 느리고 메모리 부담도 커짐).
+            # <table>이 여러 개면 첫 번째가 아니라 행이 가장 많은(=실제 데이터) 표를 고른다 —
+            # 레이아웃용 빈 표가 DOM 순서상 먼저 나올 때 잘못 집던 문제(2026-07-28) 수정.
             table_data = page.evaluate(
                 """
                 () => {
-                  const table = document.querySelector('table');
-                  if (!table) return null;
+                  const tables = Array.from(document.querySelectorAll('table'));
+                  if (!tables.length) return null;
+                  const table = tables.reduce((best, t) =>
+                    t.querySelectorAll('tr').length > best.querySelectorAll('tr').length ? t : best
+                  , tables[0]);
                   const rows = Array.from(table.querySelectorAll('tr'));
                   return rows.map(tr =>
                     Array.from(tr.querySelectorAll('td,th')).map(td => td.innerText.trim())
