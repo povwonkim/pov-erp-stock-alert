@@ -119,6 +119,23 @@ def main() -> int:
             print(f"[diag] 입력창 최대 30개: {summary['inputs']}")
             print(f"[diag] 버튼/링크 텍스트 최대 30개: {summary['buttons']}")
 
+            # 창고 필터 트리 선택 UI 구조 확인 — 검색은 아직 안 누르고 UI만 열어서 스크린샷
+            # (2026-07-29: 회사 전체 데이터로 검색하면 메모리 부담이 커서, 저희가 추적하는
+            # 4개 창고로만 필터링하고 싶음. data-cid="txtSWhCd"인 커스텀 위젯으로 확인됨).
+            wh_field = page.locator('[data-cid="txtSWhCd"] input, [data-cid="txtSWhCd"] a').first
+            if wh_field.count() > 0:
+                print("[diag] 창고 필터 필드 발견 — 클릭해서 열어봄...")
+                try:
+                    wh_field.click(timeout=5000)
+                    page.wait_for_timeout(1500)
+                except Exception as e:
+                    print(f"[diag]   창고 필드 클릭 실패(무시): {e}")
+                page.screenshot(path=str(DUMP_DIR / "aging_02b_wh_picker.png"), full_page=False)
+                (DUMP_DIR / "aging_02b_wh_picker.html").write_text(page.content())
+                print(f"[diag] 창고 선택 UI 화면 저장: {DUMP_DIR / 'aging_02b_wh_picker.png'}")
+            else:
+                print("[diag] 창고 필터 필드(txtSWhCd)를 못 찾음")
+
             # "재고수량0포함" 체크(2026-07-28 사용자 요청) — name="ZERO_QTY_INCLUDE_YN"
             # (요약 로그의 입력창 목록에서 확인). 재고 0인 품목도 포함해서 봐야 품절 판정에
             # 쓸 수 있다.
