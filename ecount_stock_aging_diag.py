@@ -113,6 +113,53 @@ def main() -> int:
             print(f"[diag] <table> {summary['tables']}개, <tr> {summary['rows']}개")
             print(f"[diag] 입력창 최대 30개: {summary['inputs']}")
             print(f"[diag] 버튼/링크 텍스트 최대 30개: {summary['buttons']}")
+
+            # "재고수량0포함" 체크(2026-07-28 사용자 요청) — name="ZERO_QTY_INCLUDE_YN"
+            # (요약 로그의 입력창 목록에서 확인). 재고 0인 품목도 포함해서 봐야 품절 판정에
+            # 쓸 수 있다.
+            zero_qty_chk = page.locator('input[name="ZERO_QTY_INCLUDE_YN"]')
+            if zero_qty_chk.count() > 0:
+                zero_qty_chk.first.check()
+                print("[diag] '재고수량0포함' 체크 완료")
+            else:
+                print("[diag] '재고수량0포함' 체크박스를 못 찾음")
+
+            # 검색 조건 화면(품목/창고 필터, 기준일자)까지는 왔으니 "검색(F8)"을 눌러 표를
+            # 채워본다 — 기준일자가 이미 오늘로 기본 설정돼 있는 걸 화면에서 확인함.
+            search_btn = page.get_by_text("검색(F8)", exact=True)
+            if search_btn.count() > 0:
+                print("[diag] '검색(F8)' 버튼 발견 — 클릭...")
+                search_btn.first.click()
+                try:
+                    page.wait_for_load_state("networkidle", timeout=20000)
+                except Exception as e:
+                    print(f"[diag]   networkidle 대기 타임아웃(무시): {e}")
+                page.wait_for_timeout(3000)
+
+                page.screenshot(path=str(DUMP_DIR / "aging_03_search_result.png"), full_page=False)
+                (DUMP_DIR / "aging_03_search_result.html").write_text(page.content())
+                print(f"[diag] 검색 결과 화면 저장: {DUMP_DIR / 'aging_03_search_result.png'}")
+
+                result_summary = page.evaluate(
+                    """
+                    () => {
+                      const tables = Array.from(document.querySelectorAll('table'));
+                      const best = tables.reduce((a, t) => t.querySelectorAll('tr').length > a.querySelectorAll('tr').length ? t : a, tables[0]);
+                      if (!best) return { tables: 0, rows: 0, headerPreview: [], firstRowPreview: [] };
+                      const rows = Array.from(best.querySelectorAll('tr'));
+                      const cellText = tr => Array.from(tr.querySelectorAll('td,th')).map(td => td.innerText.trim());
+                      return {
+                        tables: tables.length,
+                        rows: rows.length,
+                        headerPreview: rows[0] ? cellText(rows[0]) : [],
+                        firstRowPreview: rows[1] ? cellText(rows[1]) : [],
+                      };
+                    }
+                    """
+                )
+                print(f"[diag] 검색 후 표: {result_summary}")
+            else:
+                print("[diag] '검색(F8)' 버튼을 못 찾음")
         finally:
             browser.close()
 
