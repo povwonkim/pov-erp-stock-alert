@@ -70,8 +70,9 @@ def main() -> int:
             print(f"[diag] 초기 화면 저장: {DUMP_DIR / 'aging_01_initial.png'} (현재 URL: {page.url})")
 
             dismiss_new_device_modal(page)
-            had_login_form = page.locator("#txtPass").count() > 0
-            login_if_needed(page, web_user_id, web_password)
+            # 메인 ERP 앱 로그인 폼(#passwd, 회사코드 칸 있음)일 수도 있어 둘 다 확인.
+            had_login_form = page.locator("#txtPass").count() > 0 or page.locator("#passwd").count() > 0
+            login_if_needed(page, web_user_id, web_password, com_code=secrets.get("COM_CODE", ""))
             save_storage_state(context)
 
             if had_login_form:

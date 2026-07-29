@@ -58,23 +58,8 @@ def open_browser_context(p):
     return browser, context
 
 
-def login_if_needed(page, web_user_id: str, web_password: str) -> None:
-    """이미 로그인 폼이 없으면(=쿠키로 인증됨) 아무것도 안 하고, 있으면 로그인 후
-    '새로운 기기' 모달까지 처리한다. ecount_sales_scraper.py도 이 함수를 그대로 쓴다."""
-    dismiss_new_device_modal(page)
-
-    # 2026-07-28 실제 폼 구조 확인: id="txtUserId"/id="txtPass"/버튼 id="save"
-    # (onclick="excuteLogin()"). 텍스트 기반 탐색은 엉뚱한 요소를 집을 수 있어 id로 직접 지정.
-    pw_inputs = page.locator("#txtPass")
-    if pw_inputs.count() == 0:
-        return
-
-    id_input = page.locator("#txtUserId")
-    if id_input.count() > 0:
-        id_input.fill(web_user_id)
-    pw_inputs.fill(web_password)
-
-    save_btn = page.locator("#save")
+def _submit_login(page, save_selector: str = "#save") -> None:
+    save_btn = page.locator(save_selector)
     if save_btn.count() > 0:
         save_btn.click()
         try:
@@ -82,9 +67,45 @@ def login_if_needed(page, web_user_id: str, web_password: str) -> None:
         except Exception:
             pass
         page.wait_for_timeout(2000)  # SPA/JS 리다이렉트 여유
-
     # 로그인 직후에도 "새로운 기기" 모달이 뜰 수 있어 한 번 더 확인.
     dismiss_new_device_modal(page)
+
+
+def login_if_needed(page, web_user_id: str, web_password: str, com_code: str = "") -> None:
+    """이미 로그인 폼이 없으면(=쿠키로 인증됨) 아무것도 안 하고, 있으면 로그인 후
+    '새로운 기기' 모달까지 처리한다. ecount_sales_scraper.py도 이 함수를 그대로 쓴다.
+
+    이카운트 로그인 폼이 두 종류다(2026-07-28 확인):
+    1) 팝업형(판매현황 이메일 링크 등): id="txtUserId"/id="txtPass"/버튼 id="save"
+    2) 메인 ERP 앱(재고잔량분석표 등 메뉴 화면): id="com_code"/id="id"/id="passwd"/
+       버튼 id="save" — 회사코드 입력칸이 추가로 있다. 둘 다 버튼 onclick은 동일하게
+       excuteLogin(). 텍스트 기반 탐색은 엉뚱한 요소를 집을 수 있어 id로 직접 지정.
+    """
+    dismiss_new_device_modal(page)
+
+    pw_inputs = page.locator("#txtPass")
+    if pw_inputs.count() > 0:
+        id_input = page.locator("#txtUserId")
+        if id_input.count() > 0:
+            id_input.fill(web_user_id)
+        pw_inputs.fill(web_password)
+        _submit_login(page)
+        return
+
+    main_pw = page.locator("#passwd")
+    if main_pw.count() > 0:
+        if com_code:
+            com_input = page.locator("#com_code")
+            if com_input.count() > 0:
+                com_input.fill(com_code)
+        id_input = page.locator("#id")
+        if id_input.count() > 0:
+            id_input.fill(web_user_id)
+        main_pw.fill(web_password)
+        _submit_login(page)
+        return
+
+    # 로그인 폼 자체가 없음 — 이미 인증된 상태이거나 다른 팝업 구조.
 
 
 def save_storage_state(context) -> None:
