@@ -77,11 +77,15 @@ def main() -> int:
 
             if had_login_form:
                 print(f"[diag] 로그인 폼 발견 — 로그인 시도 후 현재 URL: {page.url}")
-                # 로그인 후 원래 목표 URL(해시 포함)로 다시 시도 — SPA 라우팅이라 로그인 성공 후
-                # 루트로 리다이렉트됐을 수 있어, 해시를 다시 세팅해서 해당 메뉴로 이동을 시도한다.
+                # 로그인 성공 후 ec5/view/erp 앱 화면까지는 오는데 해시(#menuType=...)가
+                # 날아간다(2026-07-28 확인) — 원래 TARGET_URL로 다시 이동하면 그 URL에 박혀있는
+                # 옛(만료된) ec_req_sid 때문에 도로 로그인 화면으로 튕긴다. 새로 발급된 세션은
+                # 그대로 두고 해시만 다시 세팅해서 SPA가 클라이언트 라우팅하게 한다.
                 if "prgId=E040727" not in page.url:
-                    print("[diag] 로그인 후 목표 화면이 아님 — 원래 URL로 재시도...")
-                    page.goto(TARGET_URL, wait_until="networkidle", timeout=60000)
+                    target_hash = TARGET_URL.split("#", 1)[1]
+                    print(f"[diag] 로그인 후 목표 화면이 아님 — 현재 URL에 해시만 재설정: #{target_hash}")
+                    page.evaluate(f"window.location.hash = {target_hash!r}")
+                    page.wait_for_timeout(3000)
             else:
                 print("[diag] 로그인 폼 없음 — 이미 인증된 상태이거나 다른 구조")
 
