@@ -62,6 +62,11 @@ def main() -> int:
         browser, context = open_browser_context(p)
         try:
             page = context.new_page()
+            # 이전 실행에서 검색(F8) 클릭 이후 정체불명의 지점에서 몇 분씩 멈추는 문제가
+            # 있었다(2026-07-29) — 어느 액션이 원인인지 특정이 안 돼서, 이후 모든 개별
+            # 액션(클릭/evaluate 등)에 공통으로 짧은 기본 타임아웃을 걸어 어디서든 최대
+            # 15초 안에 실패하고 다음으로 넘어가게 한다.
+            page.set_default_timeout(15000)
             print(f"[diag] 페이지 로드 중... {TARGET_URL}")
             page.goto(TARGET_URL, wait_until="networkidle", timeout=60000)
 
