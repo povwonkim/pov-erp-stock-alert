@@ -133,12 +133,21 @@ def main() -> int:
             # 채워본다 — 기준일자가 이미 오늘로 기본 설정돼 있는 걸 화면에서 확인함.
             search_btn = page.get_by_text("검색(F8)", exact=True)
             if search_btn.count() > 0:
-                print("[diag] '검색(F8)' 버튼 발견 — 클릭...")
-                search_btn.first.click()
+                print("[diag] '검색(F8)' 버튼 발견 — 클릭 시도...", flush=True)
+                # 2026-07-29: 이 클릭 이후 몇 분씩 원인불명으로 멈추는 현상이 있었다 —
+                # set_default_timeout(15000)을 걸어놨는데도 재현됐음(전체 프로세스가
+                # timeout 120으로 강제 종료됨, 트레이스백도 없이). 클릭 자체를 명시적
+                # 타임아웃 + try/except로 감싸서 어디서 멈추는지 정확히 좁힌다.
+                try:
+                    search_btn.first.click(timeout=10000)
+                    print("[diag] 클릭 완료", flush=True)
+                except Exception as e:
+                    print(f"[diag]   클릭 타임아웃/실패(무시하고 계속): {e}", flush=True)
                 try:
                     page.wait_for_load_state("networkidle", timeout=20000)
                 except Exception as e:
                     print(f"[diag]   networkidle 대기 타임아웃(무시): {e}")
+                print("[diag] networkidle 대기 종료, 다음 단계로", flush=True)
                 # 판매현황 스크래핑 때와 동일하게, 검색 직후 표가 비동기로 늦게 채워질 수 있어
                 # 실제 행이 어느 정도 찰 때까지 명시적으로 기다린다(2026-07-28: 로딩 스플래시
                 # 화면만 찍힌 스크린샷으로 확인 — 3초 고정 대기로는 부족했음).
