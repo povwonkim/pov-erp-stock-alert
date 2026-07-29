@@ -134,7 +134,16 @@ def main() -> int:
                     page.wait_for_load_state("networkidle", timeout=20000)
                 except Exception as e:
                     print(f"[diag]   networkidle 대기 타임아웃(무시): {e}")
-                page.wait_for_timeout(3000)
+                # 판매현황 스크래핑 때와 동일하게, 검색 직후 표가 비동기로 늦게 채워질 수 있어
+                # 실제 행이 어느 정도 찰 때까지 명시적으로 기다린다(2026-07-28: 로딩 스플래시
+                # 화면만 찍힌 스크린샷으로 확인 — 3초 고정 대기로는 부족했음).
+                try:
+                    page.wait_for_function(
+                        "document.querySelectorAll('table tr').length > 1", timeout=30000
+                    )
+                except Exception as e:
+                    print(f"[diag]   표 로딩 대기 타임아웃(무시하고 계속): {e}")
+                page.wait_for_timeout(1000)
 
                 page.screenshot(path=str(DUMP_DIR / "aging_03_search_result.png"), full_page=False)
                 (DUMP_DIR / "aging_03_search_result.html").write_text(page.content())
@@ -158,6 +167,22 @@ def main() -> int:
                     """
                 )
                 print(f"[diag] 검색 후 표: {result_summary}")
+
+                # 결과가 iframe 안에 있을 수도 있어(로딩 스플래시가 iframe 자체 로딩화면처럼
+                # 보였음) 프레임별로도 확인한다 — 메인 프레임에서 못 찾았을 때만.
+                if result_summary["rows"] == 0 and len(page.frames) > 1:
+                    print(f"[diag] 메인 프레임에 표 없음 — 하위 프레임 {len(page.frames) - 1}개 확인 중...")
+                    for fr in page.frames:
+                        if fr == page.main_frame:
+                            continue
+                        try:
+                            fr_summary = fr.evaluate(
+                                "() => ({ tables: document.querySelectorAll('table').length, "
+                                "rows: document.querySelectorAll('table tr').length })"
+                            )
+                        except Exception as e:
+                            fr_summary = {"error": str(e)}
+                        print(f"[diag]   프레임 {fr.url!r}: {fr_summary}")
             else:
                 print("[diag] '검색(F8)' 버튼을 못 찾음")
         finally:
