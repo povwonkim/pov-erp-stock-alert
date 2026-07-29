@@ -765,6 +765,13 @@ def write_read_me_tab(sheets_service, spreadsheet_id: str, sheet_id: int) -> Non
                 "mergeCells": {"range": {"sheetId": sheet_id, "startRowIndex": i, "endRowIndex": i + 1,
                                           "startColumnIndex": 2, "endColumnIndex": _README_NCOLS}, "mergeType": "MERGE_ALL"},
             })
+        elif rtype == "text":
+            # 순서 안내(①)처럼 한 줄짜리 문장 행 — A열에만 텍스트가 있고 B~E는 비어서
+            # 병합 안 하면 어색해 보인다는 사용자 피드백으로 전체 폭 병합(2026-07-28).
+            requests.append({
+                "mergeCells": {"range": {"sheetId": sheet_id, "startRowIndex": i, "endRowIndex": i + 1,
+                                          "startColumnIndex": 0, "endColumnIndex": _README_NCOLS}, "mergeType": "MERGE_ALL"},
+            })
         elif rtype == "glossaryrow":
             requests.append({
                 "mergeCells": {"range": {"sheetId": sheet_id, "startRowIndex": i, "endRowIndex": i + 1,
