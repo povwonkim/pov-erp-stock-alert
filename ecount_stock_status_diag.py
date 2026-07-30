@@ -199,12 +199,24 @@ def main() -> int:
                       if (!best) return { tables: 0, rows: 0, headerPreview: [], firstRowPreview: [] };
                       const rows = Array.from(best.querySelectorAll('tr'));
                       const cellText = tr => Array.from(tr.querySelectorAll('td,th')).map(td => td.innerText.trim());
+                      const header = rows[0] ? cellText(rows[0]) : [];
+                      const agingIdx = header.indexOf('재고보유월수');
+                      // 재고보유월수가 비어있지 않은 행을 최대 5개까지 골라서 실제 값 확인
+                      let agingSamples = [];
+                      if (agingIdx >= 0) {
+                        for (let i = 1; i < rows.length && agingSamples.length < 5; i++) {
+                          const cells = cellText(rows[i]);
+                          if (cells[agingIdx]) agingSamples.push(cells);
+                        }
+                      }
                       return {
                         tables: tables.length,
                         rows: rows.length,
-                        headerPreview: rows[0] ? cellText(rows[0]) : [],
+                        headerPreview: header,
                         firstRowPreview: rows[1] ? cellText(rows[1]) : [],
                         secondRowPreview: rows[2] ? cellText(rows[2]) : [],
+                        agingColumnIndex: agingIdx,
+                        agingSamples: agingSamples,
                       };
                     }
                     """
