@@ -73,14 +73,19 @@ cd ~/pov-erp-stock-alert
 ```bash
 crontab -e
 ```
-아래 줄 추가 (매일 **10:30 KST** — 10시 주문마감 배치가 MXN에 반영된 후):
+아래 줄 추가 (매일 **10:30 KST** — 10시 주문마감 배치가 MXN에 반영된 후). `<SPREADSHEET_ID>`는
+평소 수동 실행할 때 쓰던 `--spreadsheet-id` 값 그대로:
 ```cron
-30 10 * * * cd $HOME/pov-erp-stock-alert && .venv/bin/python ecount_daily_runner.py >> $HOME/ecount_cron.log 2>&1
+30 10 * * * cd $HOME/pov-erp-stock-alert && .venv/bin/python ecount_daily_runner.py --spreadsheet-id <SPREADSHEET_ID> >> $HOME/ecount_cron.log 2>&1
 ```
-> `ecount_daily_runner.py`(대조→구글시트→슬랙)는 인증키로 실제 데이터 구조를 확인한 뒤 추가된다.
-> 그 전까지는 위 줄 대신 `ecount_probe.py --check`로 연결만 확인해도 된다.
+> `--base-date`/`--sales-xlsx`는 안 줘도 된다 — 기본값이 각각 "실행일 기준 어제(KST)"와
+> "이카운트 판매현황 웹 스크래핑(Gmail 링크 → 로그인 → 표 읽기)"이라 매일 자동실행에 맞다.
+> 재고 API 조회 + Playwright 웹 스크래핑 + 구글시트 반영까지 이 한 줄로 전부 처리된다.
 
 로그 확인: `tail -f ~/ecount_cron.log`
+
+실패했을 때 재시도하려면(예: 웹 스크래핑만 실패), 같은 날짜로 수동 재실행 시
+`--use-cached-inventory`/`--use-cached-sales`로 이미 성공한 단계는 건너뛸 수 있다.
 
 ---
 
