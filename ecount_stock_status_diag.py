@@ -140,6 +140,21 @@ def main() -> int:
             else:
                 print("[diag] 창고 입력창을 못 찾음")
 
+            # 재고수량 최소값 필터 — 2026-07-30 1차 테스트 결과, 창고 4곳으로 좁혀도
+            # "그 창고에 재고 있는 품목만" 필터링되는 게 아니라 "전체 품목 + 선택한 창고를
+            # 컬럼으로 추가"하는 방식이라 행 수가 그대로 5002개(5000건 캡)였다. 재고수량
+            # 최소 1 이상으로 필터를 걸어서 재고 0인 품목을 빼면 캡에 안 걸릴 것으로 기대.
+            qty_min_input = page.locator('input[placeholder="재고수량"]').first
+            if qty_min_input.count() > 0:
+                try:
+                    qty_min_input.click(timeout=5000)
+                    qty_min_input.fill("1")
+                    print("[diag] 재고수량 최소값(1) 입력 완료")
+                except Exception as e:
+                    print(f"[diag]   재고수량 필터 입력 실패(무시): {e}")
+            else:
+                print("[diag] 재고수량 필터 입력창을 못 찾음")
+
             # 2026-07-30: 4개 창고 필터가 정상 동작하는 걸 확인함(사용자 스크린샷) —
             # 이제 좁힌 범위로 실제 검색까지 진행해서 무거운 렌더링/행업 문제가
             # 재현되는지 확인한다.
