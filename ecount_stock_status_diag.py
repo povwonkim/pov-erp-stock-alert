@@ -126,13 +126,20 @@ def main() -> int:
                 except Exception as e:
                     print(f"[diag]   networkidle 대기 타임아웃(무시): {e}")
                 print("[diag] networkidle 대기 종료, 다음 단계로", flush=True)
-                try:
-                    page.wait_for_function(
-                        "document.querySelectorAll('table tr').length > 1", timeout=30000
-                    )
-                except Exception as e:
-                    print(f"[diag]   표 로딩 대기 타임아웃(무시하고 계속): {e}")
-                page.wait_for_timeout(1000)
+                # wait_for_function의 타임아웃이 반복적으로 안 지켜지는 현상이 있었다
+                # (30초/300초를 다 넘김, 트레이스백도 없이) — 폴링 대신 고정 시간을 여러 번
+                # 나눠 자면서 매번 진행 상황을 찍어본다. 이러면 최소한 "몇 번째 대기에서
+                # 표가 찼는지"를 알 수 있다.
+                for i in range(6):
+                    page.wait_for_timeout(10000)  # 10초씩, 최대 60초
+                    try:
+                        row_count = page.evaluate("document.querySelectorAll('table tr').length")
+                    except Exception as e:
+                        row_count = f"evaluate 실패: {e}"
+                    print(f"[diag]   {(i + 1) * 10}초 경과 — 현재 <tr> 수: {row_count}", flush=True)
+                    if isinstance(row_count, int) and row_count > 1:
+                        print("[diag]   표가 찬 것으로 보임 — 대기 종료", flush=True)
+                        break
 
                 page.screenshot(path=str(DUMP_DIR / "status_03_search_result.png"), full_page=False)
                 (DUMP_DIR / "status_03_search_result.html").write_text(page.content())
