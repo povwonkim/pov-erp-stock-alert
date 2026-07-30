@@ -111,23 +111,32 @@ def main() -> int:
             else:
                 print("[diag] '재고수량0포함' 체크박스 없음(이 화면엔 없을 수 있음)")
 
-            # 창고 필터 — 이 화면은 창고 입력창이 아코디언 안에 안 숨어있고 바로 보임
-            # (입력창 목록에 placeholder='창고'가 첫 화면부터 있었음). 클릭해서 선택 UI가
-            # 어떻게 뜨는지 먼저 확인 — 2026-07-29: 전체 조회가 브라우저를 너무 무겁게
-            # 만들어서(검색 후 몇 분씩 응답없음) 창고 4곳으로 좁혀 데이터량을 줄여본다.
+            # 창고 필터 — 이 화면은 창고 입력창이 아코디언 안에 안 숨어있고 바로 보임.
+            # 클릭하면 체크박스 다중선택 팝업("창고검색")도 뜨지만, 사용자 확인(2026-07-29):
+            # "창고입력창에 창고 번호를 넣으면 창고가 설정이 돼" — 팝업 없이 코드를 그대로
+            # 입력창에 타이핑 + Enter로 하나씩 넣으면 된다. 전체 조회가 브라우저를 너무
+            # 무겁게 만들어서(검색 후 몇 분씩 응답없음) 창고 4곳으로 좁혀 데이터량을 줄인다.
+            TARGET_WH_CODES = {
+                "00014": "POINT OF VIEW(법인)",
+                "00012": "THE HYUNDAI SEOUL",
+                "00030": "MXN",
+                "00033": "MXN(온라인)",
+            }
             wh_input = page.locator('input[placeholder="창고"]').first
             if wh_input.count() > 0:
-                print("[diag] 창고 입력창 발견 — 클릭...")
-                try:
-                    wh_input.click(timeout=5000)
-                    page.wait_for_timeout(1000)
-                    wh_input.fill("POINT OF VIEW")
-                    page.wait_for_timeout(1500)
-                except Exception as e:
-                    print(f"[diag]   창고 입력창 클릭/입력 실패(무시): {e}")
+                print("[diag] 창고 입력창 발견 — 코드로 4개 창고 설정 시도...")
+                for code, name in TARGET_WH_CODES.items():
+                    try:
+                        wh_input.click(timeout=5000)
+                        wh_input.fill(code)
+                        wh_input.press("Enter")
+                        page.wait_for_timeout(1000)
+                        print(f"[diag]   {name}({code}) 입력 완료")
+                    except Exception as e:
+                        print(f"[diag]   {name}({code}) 입력 실패(무시): {e}")
                 page.screenshot(path=str(DUMP_DIR / "status_02c_wh_picker.png"), full_page=False)
                 (DUMP_DIR / "status_02c_wh_picker.html").write_text(page.content())
-                print(f"[diag] 창고 선택 UI 화면 저장: {DUMP_DIR / 'status_02c_wh_picker.png'}")
+                print(f"[diag] 창고 4곳 입력 후 화면 저장: {DUMP_DIR / 'status_02c_wh_picker.png'}")
             else:
                 print("[diag] 창고 입력창을 못 찾음")
 
