@@ -15,6 +15,7 @@
 """
 from __future__ import annotations
 
+import subprocess
 import sys
 from pathlib import Path
 
@@ -36,6 +37,19 @@ TARGET_URL = (
     "&prgId=E040701&depth=4"
 )
 TARGET_PRG_ID = "prgId=E040701"
+
+
+def _mem_line() -> str:
+    """`free -h`의 Mem: 줄만 뽑아온다 — 별도 터미널로 watch 안 띄워도 로그 안에서
+    메모리 추이를 같이 볼 수 있게. 실패해도(예: free 명령 없음) 진단 자체는 계속 진행."""
+    try:
+        out = subprocess.run(["free", "-h"], capture_output=True, text=True, timeout=5).stdout
+        for line in out.splitlines():
+            if line.startswith("Mem:"):
+                return line.strip()
+    except Exception as e:
+        return f"free -h 실패: {e}"
+    return "free -h 출력에서 Mem 줄을 못 찾음"
 
 
 def main() -> int:
@@ -114,31 +128,41 @@ def main() -> int:
             # 창고 필터 — 이 화면은 창고 입력창이 아코디언 안에 안 숨어있고 바로 보임.
             # 클릭하면 체크박스 다중선택 팝업("창고검색")도 뜨지만, 사용자 확인(2026-07-29):
             # "창고입력창에 창고 번호를 넣으면 창고가 설정이 돼" — 팝업 없이 코드를 그대로
-            # 입력창에 타이핑 + Enter로 하나씩 넣으면 된다. 전체 조회가 브라우저를 너무
-            # 무겁게 만들어서(검색 후 몇 분씩 응답없음) 창고 4곳으로 좁혀 데이터량을 줄인다.
-            TARGET_WH_CODES = {
-                "00014": "POINT OF VIEW(법인)",
-                "00012": "THE HYUNDAI SEOUL",
-                "00030": "MXN",
-                "00033": "MXN(온라인)",
-            }
-            wh_input = page.locator('input[placeholder="창고"]').first
-            if wh_input.count() > 0:
-                print("[diag] 창고 입력창 발견 — 코드로 4개 창고 설정 시도...")
-                for code, name in TARGET_WH_CODES.items():
-                    try:
-                        wh_input.click(timeout=5000)
-                        wh_input.fill(code)
-                        wh_input.press("Enter")
-                        page.wait_for_timeout(1000)
-                        print(f"[diag]   {name}({code}) 입력 완료")
-                    except Exception as e:
-                        print(f"[diag]   {name}({code}) 입력 실패(무시): {e}")
-                page.screenshot(path=str(DUMP_DIR / "status_02c_wh_picker.png"), full_page=False)
-                (DUMP_DIR / "status_02c_wh_picker.html").write_text(page.content())
-                print(f"[diag] 창고 4곳 입력 후 화면 저장: {DUMP_DIR / 'status_02c_wh_picker.png'}")
+            # 입력창에 타이핑 + Enter로 하나씩 넣으면 된다.
+            #
+            # 2026-07-30 결정적 발견: 창고 4곳으로 좁히면 서버는 안 멈추지만(10초/5002행)
+            # 정작 원하던 "재고보유월수" 컬럼이 전부 빈 값으로 나온다 — 같은 품목을 창고
+            # 필터 없이(전체 창고 컬럼) 조회했을 땐 "3개월"/"24개월초과" 등 실제 값이 잘
+            # 나왔다(사용자 스크린샷으로 확인). 즉 창고 필터가 재고보유월수 계산 자체를
+            # 깨뜨리는 것으로 보임 — 사용자 결정: 재고보유월수를 살리기 위해 전체 창고로
+            # 다시 시도하고, 대신 타임아웃/메모리 모니터링을 강화한다.
+            NARROW_WAREHOUSES = False
+            if NARROW_WAREHOUSES:
+                TARGET_WH_CODES = {
+                    "00014": "POINT OF VIEW(법인)",
+                    "00012": "THE HYUNDAI SEOUL",
+                    "00030": "MXN",
+                    "00033": "MXN(온라인)",
+                }
+                wh_input = page.locator('input[placeholder="창고"]').first
+                if wh_input.count() > 0:
+                    print("[diag] 창고 입력창 발견 — 코드로 4개 창고 설정 시도...")
+                    for code, name in TARGET_WH_CODES.items():
+                        try:
+                            wh_input.click(timeout=5000)
+                            wh_input.fill(code)
+                            wh_input.press("Enter")
+                            page.wait_for_timeout(1000)
+                            print(f"[diag]   {name}({code}) 입력 완료")
+                        except Exception as e:
+                            print(f"[diag]   {name}({code}) 입력 실패(무시): {e}")
+                    page.screenshot(path=str(DUMP_DIR / "status_02c_wh_picker.png"), full_page=False)
+                    (DUMP_DIR / "status_02c_wh_picker.html").write_text(page.content())
+                    print(f"[diag] 창고 4곳 입력 후 화면 저장: {DUMP_DIR / 'status_02c_wh_picker.png'}")
+                else:
+                    print("[diag] 창고 입력창을 못 찾음")
             else:
-                print("[diag] 창고 입력창을 못 찾음")
+                print("[diag] 창고 필터 생략 — 전체 창고로 조회(재고보유월수 값을 살리기 위해)")
 
             # 재고수량 최소값 필터는 2026-07-30에 시도했다가 되돌렸다 — 최소값만 채우면
             # ECOUNT 쪽 유효성 검사에 걸려("기본" 탭에 빨간 느낌표, 필드 빨간 테두리)
@@ -175,14 +199,19 @@ def main() -> int:
                 # wait_for_function의 타임아웃이 반복적으로 안 지켜지는 현상이 있었다
                 # (30초/300초를 다 넘김, 트레이스백도 없이) — 폴링 대신 고정 시간을 여러 번
                 # 나눠 자면서 매번 진행 상황을 찍어본다. 이러면 최소한 "몇 번째 대기에서
-                # 표가 찼는지"를 알 수 있다.
-                for i in range(6):
-                    page.wait_for_timeout(10000)  # 10초씩, 최대 60초
+                # 표가 찼는지"를 알 수 있다. 전체 창고 조회는 예전에 몇 분씩 걸렸던 이력이
+                # 있어서 최대 18회(180초)까지 늘리고, 매 회마다 메모리도 같이 로그에 남겨서
+                # 별도 터미널로 watch 안 띄워도 OOM 조짐을 이 로그 하나로 볼 수 있게 한다.
+                for i in range(18):
+                    page.wait_for_timeout(10000)  # 10초씩, 최대 180초
                     try:
                         row_count = page.evaluate("document.querySelectorAll('table tr').length")
                     except Exception as e:
                         row_count = f"evaluate 실패: {e}"
-                    print(f"[diag]   {(i + 1) * 10}초 경과 — 현재 <tr> 수: {row_count}", flush=True)
+                    print(
+                        f"[diag]   {(i + 1) * 10}초 경과 — 현재 <tr> 수: {row_count} | {_mem_line()}",
+                        flush=True,
+                    )
                     if isinstance(row_count, int) and row_count > 1:
                         print("[diag]   표가 찬 것으로 보임 — 대기 종료", flush=True)
                         break
