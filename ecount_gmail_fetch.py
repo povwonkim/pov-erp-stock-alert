@@ -27,8 +27,14 @@ from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 
+# 2026-08-02 버그 수정: 여기서 gmail.readonly만 있는 좁은 SCOPES로 토큰을 새로고침(refresh)하면
+# 그 결과가 같은 파일(gmail_token.json)에 그대로 저장되어, 스프레드시트 권한이 필요한
+# ecount_daily_runner.py/ecount_sheets_setup.py 쪽에서 그 직후 시트를 읽으려 하면 "권한 부족(403
+# insufficient scope)"으로 실패했다 — 액세스 토큰이 마침 만료돼 있던 실행에서만 재현되어
+# 원인 파악이 오래 걸렸다. ecount_sheets_setup.py와 반드시 같은 SCOPES를 써야 하므로 아예
+# 거기서 가져온다(따로 정의해서 또 어긋나는 일이 없도록).
 _TOKEN_FILE = Path(__file__).parent / ".secrets" / "gmail_token.json"
-SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
+from ecount_sheets_setup import SCOPES  # noqa: E402
 
 
 def _load_creds() -> Credentials:
