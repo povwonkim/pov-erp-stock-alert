@@ -484,7 +484,7 @@ def build_daily_rows(target_date: date, inventory_raw: list[dict], sales_raw: li
         # 최근판매일/최근입고일 — 이력 전체(오늘 포함) 스캔. 날짜가 ISO(YYYY-MM-DD) 문자열이라
         # 문자열 비교가 곧 날짜 비교와 같다.
         최근판매일 = target_str if 출고 > 0 else None
-        최근입고일 = target_str if 입고계산 > 0 else None
+        최근입고일 = target_str if _to_number(입고계산) > 0 else None
         for d_str, row in item_hist.items():
             if _to_number(row.get("출고")) > 0 and (최근판매일 is None or d_str > 최근판매일):
                 최근판매일 = d_str
