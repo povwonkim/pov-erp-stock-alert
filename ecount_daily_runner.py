@@ -674,9 +674,14 @@ def _status_style(status: str):
 
 def write_dashboard_tab(service, spreadsheet_id: str, sheet_id: int, blocks: list[dict], target_date: date) -> None:
     ncols = len(DASHBOARD_HEADERS)
+    # 실행 시각과 기준일(데이터가 나타내는 날짜)을 둘 다 보여준다 — 이 시스템은 항상
+    # "실행일-1일"을 처리하도록 설계돼있어(이카운트 판매현황 자동알림의 "전일" 관례를
+    # 따름) 기준일만 보면 하루 늦은 것처럼 오해할 수 있다(2026-08-04 사용자 확인).
+    run_at = datetime.now(KST)
     values: list[list] = [
         ["오늘 처리할 것을 위에서부터 순서대로", "", "", "", "", "", "", "", "", "", ""],
-        [f"결과물 탭 4개에서 자동 집계 · 마지막 갱신: {target_date.isoformat()} (기준일)", "", "", "", "", "", "", "", "", "", ""],
+        [f"결과물 탭 4개에서 자동 집계 · {run_at.strftime('%Y-%m-%d %H:%M')}에 실행, "
+         f"{target_date.isoformat()}(어제)까지의 ERP 데이터 반영", "", "", "", "", "", "", "", "", "", ""],
         [""] * ncols,
     ]
     row_styles: list[tuple[int, str, dict | None]] = []  # (row_idx0, kind, tone)
