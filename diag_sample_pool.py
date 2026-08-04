@@ -43,10 +43,17 @@ def main() -> int:
         hist_by_item.setdefault(r["품목코드"], {})[r["날짜"]] = r
 
     target_date = date.fromisoformat(args.base_date)
-    both_stale = 0
+    has_sale_hist = has_inbound_hist = has_both_hist = both_stale = 0
+    no_hist_at_all = 0
     examples = []
+    no_hist_examples = []
     for code, qty in pool_1_2.items():
         item_hist = hist_by_item.get(code, {})
+        if not item_hist:
+            no_hist_at_all += 1
+            if len(no_hist_examples) < 5:
+                no_hist_examples.append(code)
+            continue
         최근판매일 = None
         최근입고일 = None
         for d_str, row in item_hist.items():
@@ -56,6 +63,12 @@ def main() -> int:
                 최근판매일 = d_str
             if isinstance(입고, (int, float)) and 입고 > 0 and (최근입고일 is None or d_str > 최근입고일):
                 최근입고일 = d_str
+        if 최근판매일:
+            has_sale_hist += 1
+        if 최근입고일:
+            has_inbound_hist += 1
+        if 최근판매일 and 최근입고일:
+            has_both_hist += 1
         미판매 = (target_date - date.fromisoformat(최근판매일)).days if 최근판매일 else None
         미입고 = (target_date - date.fromisoformat(최근입고일)).days if 최근입고일 else None
         if 미판매 is not None and 미판매 >= 90 and 미입고 is not None and 미입고 >= 90:
@@ -63,7 +76,11 @@ def main() -> int:
             if len(examples) < 5:
                 examples.append((code, qty, 미판매, 미입고))
 
-    print(f"[diag] 그중 미판매·미입고 둘 다 90일 이상 근거 있는 품목: {both_stale}개")
+    print(f"[diag] 일별재고이력에 해당 품목코드 행 자체가 아예 없음: {no_hist_at_all}개 (예: {no_hist_examples})")
+    print(f"[diag] 최근판매일 근거 있음: {has_sale_hist}개")
+    print(f"[diag] 최근입고일 근거 있음: {has_inbound_hist}개")
+    print(f"[diag] 둘 다 근거 있음: {has_both_hist}개")
+    print(f"[diag] 둘 다 근거 있고 90일 이상: {both_stale}개")
     for ex in examples:
         print("  예시:", ex)
     return 0
