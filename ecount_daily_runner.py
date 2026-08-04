@@ -29,7 +29,7 @@ from pathlib import Path
 from openpyxl import load_workbook
 
 from ecount_client import EcountClient
-from ecount_item_master import LEADTIME_BY_TYPE
+from ecount_item_master import EXCLUDED_BRANDS, LEADTIME_BY_TYPE
 from ecount_sheets_setup import (
     TABS, OFFLINE_WAREHOUSES, OFFLINE_WAREHOUSE_CODES, DATA_START_IDX, _TOKEN_FILE, SCOPES,
     STATUS_COLOR_RULES, BANNER1_BG, BANNER_FG_LIGHT, BANNER3_BG, BANNER3_FG,
@@ -408,6 +408,14 @@ def build_daily_rows(target_date: date, inventory_raw: list[dict], sales_raw: li
         조달유형 = meta.get("조달유형", "미분류")
         리드타임 = meta.get("리드타임", "")
         품목명 = name_by_item.get(code, meta.get("품목명", ""))
+
+        # 단종/제외 품목 — 이 시스템 어디에도(일별재고이력 포함) 아예 안 남긴다(2026-08-04
+        # 사용자 확정: "시즌아이템이라서 이제는 단종되거나 여기에 두어도 의미없는 건 제외").
+        # 품목명에 "(단종)"이 붙어있으면 이카운트 쪽에서 이미 단종 처리한 것으로 보고 제외.
+        # EXCLUDED_BRANDS(ARCHIVE. Object/PointofView)는 2026-07-28에 이미 제외하기로
+        # 확정했었는데 이 파이프라인엔 안 걸려있었던 걸 여기서 같이 바로잡는다.
+        if "(단종)" in 품목명 or 브랜드 in EXCLUDED_BRANDS:
+            continue
 
         재고 = total_by_item.get(code, 0.0)
         출고 = out_by_item.get(code, 0.0)
