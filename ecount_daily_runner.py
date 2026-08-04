@@ -359,6 +359,19 @@ def compute_doi(재고: float, 최근7일: float) -> float | str:
     return round(재고 / (최근7일 / 7), 1)
 
 
+# 악성품절 세분화 구간(2026-08-04 사용자 확정) — 90일 미만은 악성품절 대상에서 아예 제외.
+STOCKOUT_BUCKETS = [
+    (730, "2년+"), (365, "1년+"), (180, "180일+"), (150, "150일+"), (120, "120일+"), (90, "90일+"),
+]
+
+
+def stockout_bucket(품절경과일: int) -> str:
+    for threshold, label in STOCKOUT_BUCKETS:
+        if 품절경과일 >= threshold:
+            return label
+    return ""
+
+
 def build_daily_rows(target_date: date, inventory_raw: list[dict], sales_raw: list[dict],
                       item_master: dict[str, dict], history: list[dict]) -> dict:
     """오늘자 일별재고이력 행들과 3층 결과물을 계산해서 반환."""
@@ -484,10 +497,14 @@ def build_daily_rows(target_date: date, inventory_raw: list[dict], sales_raw: li
                         리드타임, 재고, doi, 최근7일, 최근90일, 품절경과일,
                         "재입고 검토", f"재입고 골든타임(최근90일 {최근90일:.0f}개)",
                     ])
-            else:
+            elif 품절경과일 >= 90:
+                # 90일 미만은 악성품절 대상에서 제외(2026-08-04 사용자 확정 — 30~89일짜리는
+                # 관리팀_전체재고에 "품절-장기" 상태로는 계속 보이지만, 별도 검토 리스트인
+                # 악성품절엔 진짜 오래 방치된 것만 올린다).
                 maldead_rows.append([
                     브랜드, code, 품목명, 조달유형, 리드타임, 재고,
-                    최근판매일 or "", 미판매경과일, 품절경과일, 최근입고일 or "", 미입고경과일, 최근90일,
+                    최근판매일 or "", 미판매경과일, 품절경과일, stockout_bucket(품절경과일),
+                    최근입고일 or "", 미입고경과일, 최근90일,
                     "재발주 검토 또는 단종 검토 (판단 필요)", "",
                 ])
         elif 상태 in PRIORITY_BY_STATUS and is_design_target:
@@ -569,8 +586,8 @@ def build_dashboard_blocks(result: dict) -> list[dict]:
         return _dashboard_row(rank, r[0], r[2], "", "🔵 과잉", r[3], "", "", r[5], r[7], r[8])
 
     def from_maldead(r, rank):
-        # r: 브랜드,코드,품목명,조달유형,리드타임,재고,최근판매일,미판매(일),품절(일),최근입고일,미입고(일),90일,조치,메모
-        return _dashboard_row(rank, r[0], r[2], r[3], "⚫ 품절-장기", r[5], "", "", r[7], "", r[12])
+        # r: 브랜드,코드,품목명,조달유형,리드타임,재고,최근판매일,미판매(일),품절(일),품절구간,최근입고일,미입고(일),90일,조치,메모
+        return _dashboard_row(rank, r[0], r[2], r[3], "⚫ 품절-장기", r[5], "", "", r[7], "", r[13])
 
     blk1_rows = [from_design(r, i + 1) for i, r in enumerate(design[:20])]
     blk2_src = sorted([r for r in design if isinstance(r[11], int) and r[11] >= 3], key=lambda r: -r[11])
