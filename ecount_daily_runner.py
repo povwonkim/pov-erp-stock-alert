@@ -29,7 +29,7 @@ from pathlib import Path
 from openpyxl import load_workbook
 
 from ecount_client import EcountClient
-from ecount_item_master import EXCLUDED_BRANDS, LEADTIME_BY_TYPE
+from ecount_item_master import EXCLUDED_BRANDS, EXCLUDED_ITEM_NAMES, LEADTIME_BY_TYPE
 from ecount_sheets_setup import (
     TABS, OFFLINE_WAREHOUSES, OFFLINE_WAREHOUSE_CODES, DATA_START_IDX, _TOKEN_FILE, SCOPES,
     STATUS_COLOR_RULES, BANNER1_BG, BANNER_FG_LIGHT, BANNER3_BG, BANNER3_FG,
@@ -414,7 +414,9 @@ def build_daily_rows(target_date: date, inventory_raw: list[dict], sales_raw: li
         # 품목명에 "(단종)"이 붙어있으면 이카운트 쪽에서 이미 단종 처리한 것으로 보고 제외.
         # EXCLUDED_BRANDS(ARCHIVE. Object/PointofView)는 2026-07-28에 이미 제외하기로
         # 확정했었는데 이 파이프라인엔 안 걸려있었던 걸 여기서 같이 바로잡는다.
-        if "(단종)" in 품목명 or 브랜드 in EXCLUDED_BRANDS:
+        # 특정 품목 개별 제외(작년 시즌 아이템 등, 재입고 안 함 — 2026-08-04 사용자 확인).
+        # 품목명 앞뒤 공백 차이로 안 걸러지는 일이 없게 strip 비교.
+        if "(단종)" in 품목명 or 브랜드 in EXCLUDED_BRANDS or 품목명.strip() in EXCLUDED_ITEM_NAMES:
             continue
 
         재고 = total_by_item.get(code, 0.0)

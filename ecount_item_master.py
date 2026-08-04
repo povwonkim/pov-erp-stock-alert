@@ -59,6 +59,16 @@ MANUAL_OVERRIDES = {
 # 2026-07-28 사용자 확인: 가져오지 않기로 함.
 EXCLUDED_BRANDS = {"ARCHIVE. Object", "PointofView"}
 
+# 브랜드 전체는 아니고 특정 품목만 제외 — 작년 시즌 아이템이라 재입고 안 함(2026-08-04
+# 사용자 확인). 이카운트 품목명에 "(단종)"이 안 붙어있는 것들이라 브랜드/명칭 규칙으로는
+# 못 걸러서 이름을 직접 등록한다. 품목명 앞뒤 공백은 비교 시 무시(ecount_daily_runner.py).
+EXCLUDED_ITEM_NAMES = {
+    "POV diary duo book 2026",
+    "(50%)POV format series_calendar 2026",
+    "(50%)POV format series_weekly 2026",
+    "(50%)POV Original diary book 2026",
+}
+
 # 브랜드 단위로는 판단 안 되고 품목코드(SKU) 단위로 조달유형이 갈리는 예외.
 # "OTHER" 브랜드 안에 섞여있는 것 중 확인된 것들(2026-07-28).
 SKU_OVERRIDES = {
