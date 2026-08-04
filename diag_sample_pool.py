@@ -47,6 +47,7 @@ def main() -> int:
     no_hist_at_all = 0
     examples = []
     no_hist_examples = []
+    both_examples = []
     for code, qty in pool_1_2.items():
         item_hist = hist_by_item.get(code, {})
         if not item_hist:
@@ -69,6 +70,8 @@ def main() -> int:
             has_inbound_hist += 1
         if 최근판매일 and 최근입고일:
             has_both_hist += 1
+            if len(both_examples) < 8:
+                both_examples.append((code, qty, 최근판매일, 최근입고일))
         미판매 = (target_date - date.fromisoformat(최근판매일)).days if 최근판매일 else None
         미입고 = (target_date - date.fromisoformat(최근입고일)).days if 최근입고일 else None
         if 미판매 is not None and 미판매 >= 90 and 미입고 is not None and 미입고 >= 90:
@@ -82,7 +85,10 @@ def main() -> int:
     print(f"[diag] 둘 다 근거 있음: {has_both_hist}개")
     print(f"[diag] 둘 다 근거 있고 90일 이상: {both_stale}개")
     for ex in examples:
-        print("  예시:", ex)
+        print("  90일+ 예시:", ex)
+    print("[diag] '둘 다 근거 있음' 품목의 실제 날짜값 샘플(품목코드, 재고, 최근판매일, 최근입고일):")
+    for ex in both_examples:
+        print("  ", ex)
     return 0
 
 
