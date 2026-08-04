@@ -434,9 +434,17 @@ def build_daily_rows(target_date: date, inventory_raw: list[dict], sales_raw: li
 
         재고 = total_by_item.get(code, 0.0)
         출고 = out_by_item.get(code, 0.0)
-        prev_row = hist_by_item.get(code, {}).get(prev_str)
+        item_hist_so_far = hist_by_item.get(code, {})
+        prev_row = item_hist_so_far.get(prev_str)
+        # 전일 기록이 없는데(prev_row=None) 이 품목의 더 이전 이력은 있다면 — 진짜 0에서
+        # 시작하는 게 아니라 그 사이 실행이 끊겨서 생긴 구멍이다(2026-08-04 확인: 크론이
+        # 며칠 실패하던 시기에 이런 구멍이 실제로 생겼고, 전일재고를 0으로 잘못 가정해서
+        # 그 차이가 전부 "입고"로 잡히는 아티팩트가 났었다 — fix_cold_start_artifacts.py로
+        # 기존 데이터는 정리했고, 여기서는 재발을 막는다). 이럴 땐 입고를 계산하지 않고
+        # 빈칸으로 남겨 "모름"을 정직하게 표시한다.
+        is_gap = prev_row is None and bool(item_hist_so_far)
         전일재고 = _to_number(prev_row["재고"]) if prev_row else 0.0
-        입고계산 = (재고 - 전일재고) + 출고
+        입고계산 = "" if is_gap else (재고 - 전일재고) + 출고
 
         prev_stockout_days = int(_to_number(prev_row["품절(일)"])) if prev_row and prev_row.get("품절(일)") not in ("", None) else 0
         if 재고 <= 0:
