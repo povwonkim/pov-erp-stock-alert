@@ -752,7 +752,7 @@ def write_dashboard_tab(service, spreadsheet_id: str, sheet_id: int, blocks: lis
     # 배너 2행.
     requests.append({"mergeCells": {"range": {"sheetId": sheet_id, "startRowIndex": 0, "endRowIndex": 1, "startColumnIndex": 0, "endColumnIndex": ncols}, "mergeType": "MERGE_ALL"}})
     requests.append({"repeatCell": {"range": {"sheetId": sheet_id, "startRowIndex": 0, "endRowIndex": 1, "startColumnIndex": 0, "endColumnIndex": ncols},
-                                     "cell": {"userEnteredFormat": {"backgroundColor": BANNER1_BG, "textFormat": {"bold": True, "foregroundColor": BANNER_FG_LIGHT, "fontFamily": FONT_BODY, "fontSize": 11}, "horizontalAlignment": "CENTER", "verticalAlignment": "MIDDLE"}},
+                                     "cell": {"userEnteredFormat": {"backgroundColor": BANNER1_BG, "textFormat": {"bold": True, "foregroundColor": BANNER_FG_LIGHT, "fontFamily": FONT_BODY, "fontSize": 11}, "horizontalAlignment": "LEFT", "verticalAlignment": "MIDDLE"}},
                                      "fields": "userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,verticalAlignment)"}})
     requests.append({"mergeCells": {"range": {"sheetId": sheet_id, "startRowIndex": 1, "endRowIndex": 2, "startColumnIndex": 0, "endColumnIndex": ncols}, "mergeType": "MERGE_ALL"}})
     requests.append({"repeatCell": {"range": {"sheetId": sheet_id, "startRowIndex": 1, "endRowIndex": 2, "startColumnIndex": 0, "endColumnIndex": ncols},
