@@ -40,6 +40,17 @@ from ecount_sheets_setup import (
 KST = timezone(timedelta(hours=9))
 DUMP_DIR = Path(__file__).parent / "cron_tracking" / "ecount"
 
+# 품목코드 → 입고단가 조회표. 이카운트 재고 API(fetch_inventory_raw)엔 단가 정보가 없어서,
+# 2026-07-30에 사용자가 뽑아준 재고현황 엑셀에서 1회성으로 추출했다(8,399개 품목,
+# one_time_seed_2026-07-30/item_cost_lookup.json). 입고단가는 SKU당 잘 안 바뀌는 값이라
+# 당분간은 이 스냅샷으로 충분하지만, 이카운트 API에서 직접 가져오는 방법이 생기면 교체할 것
+# (2026-08-06 사용자 요청 — 악성재고/샘플의심재고에 재고금액 표시).
+_COST_LOOKUP_PATH = Path(__file__).parent / "one_time_seed_2026-07-30" / "item_cost_lookup.json"
+try:
+    ITEM_COST_LOOKUP: dict[str, float] = json.loads(_COST_LOOKUP_PATH.read_text())
+except FileNotFoundError:
+    ITEM_COST_LOOKUP = {}
+
 # 이카운트 실서버 조회 API(재고현황/창고별재고현황 포함)는 종류당 1회/10분 제한(2026-07-28
 # 공식 문서 확인, HTTP 412 = "API 전송 횟수 기준을 넘은 경우"). 오프라인 창고 4곳을 각각
 # 조회하려면 그만큼 간격을 둬야 한다 — 10분(600초) + 여유.
@@ -528,11 +539,17 @@ def build_daily_rows(target_date: date, inventory_raw: list[dict], sales_raw: li
             전일재고, 입고계산, 출고, 최근7일, doi, 조치방안, "",
         ])
 
+        # 입고단가/재고금액 — ITEM_COST_LOOKUP(2026-07-30 스냅샷)에 있는 품목만 계산되고,
+        # 없으면 빈칸(모름을 0원으로 오판하면 안 됨).
+        입고단가 = ITEM_COST_LOOKUP.get(code)
+        재고금액 = round(재고 * 입고단가) if 입고단가 is not None else ""
+
         # 악성재고 — 재고 있음 + 90일 이상 미판매.
         if 재고 > 0 and isinstance(미판매경과일, int) and 미판매경과일 >= 90:
             malstock_action = "프로모션/할인 검토" if 미판매경과일 < 180 else "땡처리/폐기 검토"
             malstock_rows.append([
-                브랜드, code, 품목명, 재고, 최근판매일 or "", 미판매경과일, "", "", malstock_action, "",
+                브랜드, code, 품목명, 재고, 최근판매일 or "", 미판매경과일,
+                입고단가 if 입고단가 is not None else "", 재고금액, malstock_action, "",
             ])
 
         # 샘플의심재고 — 재고 1~2개 & 판매·입고 둘 다 3개월(90일) 이상 없음(2026-07-30 사용자
@@ -543,7 +560,9 @@ def build_daily_rows(target_date: date, inventory_raw: list[dict], sales_raw: li
                 and isinstance(미입고경과일, int) and 미입고경과일 >= 90):
             sample_rows.append([
                 브랜드, code, 품목명, 조달유형, 재고, 최근판매일 or "", 미판매경과일,
-                최근입고일 or "", 미입고경과일, "이카운트에서 샘플/전시용 여부 확인 필요", "",
+                최근입고일 or "", 미입고경과일,
+                입고단가 if 입고단가 is not None else "", 재고금액,
+                "이카운트에서 샘플/전시용 여부 확인 필요", "",
             ])
 
     # 정렬 — 각 탭 note에 명시된 규칙.
@@ -551,8 +570,9 @@ def build_daily_rows(target_date: date, inventory_raw: list[dict], sales_raw: li
     # 헷갈리므로 맨 아래로 그룹핑(2026-07-28 사용자 확정) — 그 안에서는 기존 우선순위 정렬 유지.
     design_rows.sort(key=lambda r: (r[0] == "POV_application", r[5], r[7]))  # 비품 그룹 → 우선순위 asc → 재고수량 asc
     mgmt_rows.sort(key=lambda r: (PRIORITY_BY_STATUS.get(r[4], 50), r[1]))  # 상태우선순위 → 품목코드
-    malstock_rows.sort(key=lambda r: -(r[5] or 0))           # 미판매(일) 내림차순 — 오래 방치된 것부터
-                                                                # (재고금액·재고수량 순으로 보고 싶으면 시트에서 직접 정렬)
+    # 재고금액(r[7]) 내림차순 — 탭 note에 명시된 정렬 기준(2026-08-06부터 실제 값 채워짐).
+    # 단가 근거 없어 재고금액이 빈칸("")인 행은 맨 뒤로.
+    malstock_rows.sort(key=lambda r: -(r[7] if isinstance(r[7], (int, float)) else -1))
     maldead_rows.sort(key=lambda r: -(r[8] or 0))            # 품절경과일 내림차순
     sample_rows.sort(key=lambda r: -(r[6] or 0))              # 미판매(일) 내림차순
 
