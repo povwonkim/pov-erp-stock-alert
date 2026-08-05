@@ -65,7 +65,7 @@ STRIPE_BG = {"red": 0.961, "green": 0.961, "blue": 0.961}    # #F5F5F5 — 데�
 # 2026-07-28 재조정: #FAF8F6은 너무 옅고, #F0EBE6은 너무 진했다는 피드백 — 무채색 그레이로 확정)
 BODY_FG = {"red": 0.2, "green": 0.2, "blue": 0.2}            # #333333 — 순수 검정 금지
 
-FONT_BODY = "Noto Sans KR"
+FONT_BODY = "Gothic A1"  # 2026-08-06 사용자 요청 — SUIT/프리텐다드는 구글 폰트에 없어 대안으로 선택
 FONT_MONO = "Roboto Mono"
 
 SEMANTIC_DANGER_BG = {"red": 0.976, "green": 0.816, "blue": 0.816}   # F9D0D0 — 🔴
