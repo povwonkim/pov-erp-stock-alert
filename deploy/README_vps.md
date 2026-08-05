@@ -73,10 +73,12 @@ cd ~/pov-erp-stock-alert
 ```bash
 crontab -e
 ```
-아래 줄 추가 (매일 **10:30 KST** — 10시 주문마감 배치가 MXN에 반영된 후). `<SPREADSHEET_ID>`는
-평소 수동 실행할 때 쓰던 `--spreadsheet-id` 값 그대로:
+아래 줄 추가 (매일 **7:30 KST** — 이카운트 "판매현황" 자동알림 메일이 매일 7:05경 도착하는
+걸 확인해서, 25분 여유를 두고 시작하도록 잡음(2026-08-05). 창고 API 대기 포함 30~40분
+걸려도 직원 출근(9:30) 전인 9시 전에는 완료됨). `<SPREADSHEET_ID>`는 평소 수동 실행할 때
+쓰던 `--spreadsheet-id` 값 그대로:
 ```cron
-30 10 * * * $HOME/pov-erp-stock-alert/run_daily_with_retry.sh <SPREADSHEET_ID> >> $HOME/ecount_cron.log 2>&1
+30 7 * * * $HOME/pov-erp-stock-alert/run_daily_with_retry.sh <SPREADSHEET_ID> >> $HOME/ecount_cron.log 2>&1
 ```
 > `ecount_daily_runner.py`를 직접 부르지 않고 `run_daily_with_retry.sh` 래퍼를 쓴다(2026-07-31
 > 도입) — 첫 크론 실행이 구글 OAuth 쪽 일시적 403(insufficient scope)으로 실패한 적이 있어서,
