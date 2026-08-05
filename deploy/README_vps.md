@@ -73,14 +73,25 @@ cd ~/pov-erp-stock-alert
 ```bash
 crontab -e
 ```
-아래 줄 추가 (매일 **10:30 KST** — 10시 주문마감 배치가 MXN에 반영된 후):
+아래 줄 추가 (매일 **7:30 KST** — 이카운트 "판매현황" 자동알림 메일이 매일 7:05경 도착하는
+걸 확인해서, 25분 여유를 두고 시작하도록 잡음(2026-08-05). 창고 API 대기 포함 30~40분
+걸려도 직원 출근(9:30) 전인 9시 전에는 완료됨). `<SPREADSHEET_ID>`는 평소 수동 실행할 때
+쓰던 `--spreadsheet-id` 값 그대로:
 ```cron
-30 10 * * * cd $HOME/pov-erp-stock-alert && .venv/bin/python ecount_daily_runner.py >> $HOME/ecount_cron.log 2>&1
+30 7 * * * $HOME/pov-erp-stock-alert/run_daily_with_retry.sh <SPREADSHEET_ID> >> $HOME/ecount_cron.log 2>&1
 ```
-> `ecount_daily_runner.py`(대조→구글시트→슬랙)는 인증키로 실제 데이터 구조를 확인한 뒤 추가된다.
-> 그 전까지는 위 줄 대신 `ecount_probe.py --check`로 연결만 확인해도 된다.
+> `ecount_daily_runner.py`를 직접 부르지 않고 `run_daily_with_retry.sh` 래퍼를 쓴다(2026-07-31
+> 도입) — 첫 크론 실행이 구글 OAuth 쪽 일시적 403(insufficient scope)으로 실패한 적이 있어서,
+> 실패 시 60초 후 캐시된 재고/판매 데이터로 자동 재시도한다(창고별 API 10분 제한 때문에
+> 처음부터 재시도하면 30분+ 걸려 비효율적).
+>
+> `--base-date`/`--sales-xlsx`는 안 줘도 된다 — 기본값이 각각 "실행일 기준 어제(KST)"와
+> "이카운트 판매현황 웹 스크래핑(Gmail 링크 → 로그인 → 표 읽기)"이라 매일 자동실행에 맞다.
 
 로그 확인: `tail -f ~/ecount_cron.log`
+
+재시도까지 다 실패했을 때 수동 재실행하려면, 같은 날짜 기준 `--use-cached-inventory`/
+`--use-cached-sales`로 이미 성공한 단계는 건너뛸 수 있다.
 
 ---
 
