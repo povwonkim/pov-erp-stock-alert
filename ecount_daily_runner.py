@@ -714,6 +714,32 @@ def with_money_total_row(rows: list[list], money_idx: int, ncols: int, label_idx
     return [total_row] + rows
 
 
+# 합계 행 배경색 — 사용자가 시트에서 직접 고른 색(2026-08-06, 채우기색 커스텀 HEX 확인).
+TOTAL_ROW_BG_MALSTOCK = {"red": 1.0, "green": 0.949, "blue": 0.8}       # #fff2cc — 악성재고
+TOTAL_ROW_BG_SAMPLE = {"red": 0.812, "green": 0.886, "blue": 0.953}    # #cfe2f3 — 샘플의심재고
+
+
+def style_total_row(service, spreadsheet_id: str, sheet_id: int, ncols: int, bg: dict) -> None:
+    """합계 행(맨 위 데이터 행)에 배경색 + 볼드를 매번 다시 칠한다.
+
+    replace_tab_rows는 값만 지우고 다시 쓰기 때문에 서식 자체는 안 건드리지만,
+    ecount_sheets_setup.py의 줄무늬(밴딩)를 재실행하면 밴딩 범위의 첫 줄(=이 행)이
+    흰색으로 강제 지정되어 사용자가 수동으로 넣은 배경색이 사라진다(2026-08-06 확인).
+    그래서 매일 실행마다 여기서 명시적으로 다시 칠해서 항상 유지되게 한다.
+    """
+    service.spreadsheets().batchUpdate(
+        spreadsheetId=spreadsheet_id,
+        body={"requests": [{
+            "repeatCell": {
+                "range": {"sheetId": sheet_id, "startRowIndex": DATA_START_IDX, "endRowIndex": DATA_START_IDX + 1,
+                           "startColumnIndex": 0, "endColumnIndex": ncols},
+                "cell": {"userEnteredFormat": {"backgroundColor": bg, "textFormat": {"bold": True, "fontFamily": FONT_BODY, "fontSize": 9}}},
+                "fields": "userEnteredFormat(backgroundColor,textFormat)",
+            }
+        }]},
+    ).execute()
+
+
 def _status_style(status: str):
     """STATUS_COLOR_RULES를 재사용해 대시보드 상태 셀 색을 본문 탭과 동일하게 맞춘다."""
     for substr, bg, fg, bold in STATUS_COLOR_RULES:
@@ -953,6 +979,15 @@ def main() -> int:
     replace_tab_rows(service, args.spreadsheet_id, "샘플의심재고",
                       with_money_total_row(result["sample"], money_idx=10, ncols=13))
     write_status_distribution_banner(service, args.spreadsheet_id, result["mgmt"])
+
+    tab_meta = service.spreadsheets().get(
+        spreadsheetId=args.spreadsheet_id, fields="sheets.properties(sheetId,title)"
+    ).execute()
+    tab_id_by_title = {s["properties"]["title"]: s["properties"]["sheetId"] for s in tab_meta["sheets"]}
+    if "악성재고" in tab_id_by_title:
+        style_total_row(service, args.spreadsheet_id, tab_id_by_title["악성재고"], ncols=10, bg=TOTAL_ROW_BG_MALSTOCK)
+    if "샘플의심재고" in tab_id_by_title:
+        style_total_row(service, args.spreadsheet_id, tab_id_by_title["샘플의심재고"], ncols=13, bg=TOTAL_ROW_BG_SAMPLE)
 
     if new_master_rows:
         print("[runner] 품목마스터 신규 품목 반영 중...")
