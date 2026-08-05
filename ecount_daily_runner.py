@@ -811,8 +811,8 @@ def write_dashboard_tab(service, spreadsheet_id: str, sheet_id: int, blocks: lis
         elif kind == "subtitle":
             requests.append({"mergeCells": {"range": {"sheetId": sheet_id, "startRowIndex": row_idx, "endRowIndex": row_idx + 1, "startColumnIndex": 0, "endColumnIndex": ncols}, "mergeType": "MERGE_ALL"}})
             requests.append({"repeatCell": {"range": {"sheetId": sheet_id, "startRowIndex": row_idx, "endRowIndex": row_idx + 1, "startColumnIndex": 0, "endColumnIndex": ncols},
-                                             "cell": {"userEnteredFormat": {"textFormat": {"italic": True, "foregroundColor": BODY_FG, "fontFamily": FONT_BODY, "fontSize": 9}}},
-                                             "fields": "userEnteredFormat.textFormat"}})
+                                             "cell": {"userEnteredFormat": {"textFormat": {"italic": True, "foregroundColor": BODY_FG, "fontFamily": FONT_BODY, "fontSize": 9}, "horizontalAlignment": "RIGHT"}},
+                                             "fields": "userEnteredFormat(textFormat,horizontalAlignment)"}})
         elif kind == "header":
             requests.append({"repeatCell": {"range": {"sheetId": sheet_id, "startRowIndex": row_idx, "endRowIndex": row_idx + 1, "startColumnIndex": 0, "endColumnIndex": ncols},
                                              "cell": {"userEnteredFormat": {"backgroundColor": HEADER_BG, "textFormat": {"bold": True, "foregroundColor": HEADER_FG, "fontFamily": FONT_BODY, "fontSize": 9}}},
