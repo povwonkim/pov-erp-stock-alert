@@ -35,6 +35,7 @@ from ecount_sheets_setup import (
     STATUS_COLOR_RULES, BANNER1_BG, BANNER_FG_LIGHT, BANNER3_BG, BANNER3_FG,
     HEADER_BG, HEADER_FG, FONT_BODY, FONT_MONO, BODY_FG,
     SEMANTIC_DANGER_BG, SEMANTIC_INFO_BG, SEMANTIC_WARNING_BG,
+    NUMBER_FORMAT_MONEY,
 )
 
 KST = timezone(timedelta(hours=9))
@@ -504,6 +505,12 @@ def build_daily_rows(target_date: date, inventory_raw: list[dict], sales_raw: li
         미판매경과일 = (target_date - date.fromisoformat(최근판매일)).days if 최근판매일 else ""
         미입고경과일 = (target_date - date.fromisoformat(최근입고일)).days if 최근입고일 else ""
 
+        # 입고단가/재고금액 — ITEM_COST_LOOKUP(2026-07-30 스냅샷)에 있는 품목만 계산되고,
+        # 없으면 빈칸(모름을 0원으로 오판하면 안 됨). 악성재고/악성품절/샘플의심재고
+        # 라우팅보다 앞에 있어야 셋 다 이 값을 쓸 수 있다.
+        입고단가 = ITEM_COST_LOOKUP.get(code)
+        재고금액 = round(재고 * 입고단가) if 입고단가 is not None else ""
+
         # ---- 3층 결과물 라우팅 ----
         # 디자인팀_발주필요는 "제작(자체제작) 발주"만 다루므로 조달유형이 자체제작인 품목만
         # 노출한다(2026-07-28 사용자 확정 — 국내사입/해외수입은 디자인팀이 아니라 관리팀 소관).
@@ -538,11 +545,6 @@ def build_daily_rows(target_date: date, inventory_raw: list[dict], sales_raw: li
             브랜드, code, 품목명, 조달유형, 상태, 리드타임, *wh_qtys, 재고,
             전일재고, 입고계산, 출고, 최근7일, doi, 조치방안, "",
         ])
-
-        # 입고단가/재고금액 — ITEM_COST_LOOKUP(2026-07-30 스냅샷)에 있는 품목만 계산되고,
-        # 없으면 빈칸(모름을 0원으로 오판하면 안 됨).
-        입고단가 = ITEM_COST_LOOKUP.get(code)
-        재고금액 = round(재고 * 입고단가) if 입고단가 is not None else ""
 
         # 악성재고 — 재고 있음 + 90일 이상 미판매.
         if 재고 > 0 and isinstance(미판매경과일, int) and 미판매경과일 >= 90:
@@ -599,7 +601,9 @@ def _dashboard_row(rank: int, brand, name, ptype, status, qty, sales7, doi, elap
 
 
 def build_dashboard_blocks(result: dict) -> list[dict]:
-    design, mgmt, malstock, maldead = result["design"], result["mgmt"], result["malstock"], result["maldead"]
+    design, mgmt, malstock, maldead, sample = (
+        result["design"], result["mgmt"], result["malstock"], result["maldead"], result["sample"],
+    )
 
     def from_design(r, rank):
         # r: 브랜드,코드,품목명,조달유형,상태,우선순위,리드타임,재고,DOI,7일,90일,품절(일),조치,메모
@@ -617,7 +621,12 @@ def build_dashboard_blocks(result: dict) -> list[dict]:
 
     def from_maldead(r, rank):
         # r: 브랜드,코드,품목명,조달유형,리드타임,재고,최근판매일,미판매(일),품절(일),품절구간,최근입고일,미입고(일),90일,조치,메모
+        # 재고금액은 항상 0(품절 = 재고 0)이라 의미 없어서 안 넣는다.
         return _dashboard_row(rank, r[0], r[2], r[3], "⚫ 품절-장기", r[5], "", "", r[7], "", r[13])
+
+    def from_sample(r, rank):
+        # r: 브랜드,코드,품목명,조달유형,재고,최근판매일,미판매(일),최근입고일,미입고(일),입고단가,재고금액,조치,메모
+        return _dashboard_row(rank, r[0], r[2], r[3], "🟣 샘플의심", r[4], "", "", r[6], r[10], r[11])
 
     blk1_rows = [from_design(r, i + 1) for i, r in enumerate(design[:20])]
     blk2_src = sorted([r for r in design if isinstance(r[11], int) and r[11] >= 3], key=lambda r: -r[11])
@@ -641,6 +650,7 @@ def build_dashboard_blocks(result: dict) -> list[dict]:
     # 직접 정렬해서 보라는 사용자 요청 반영(2026-07-28).
     blk5_rows = [from_malstock(r, i + 1) for i, r in enumerate(malstock)]
     blk6_rows = [from_maldead(r, i + 1) for i, r in enumerate(maldead)]
+    blk7_rows = [from_sample(r, i + 1) for i, r in enumerate(sample)]
 
     return [
         {"title": "오늘 조치 필요", "action": "지금 발주해야 리드타임 커버", "tone": "danger",
@@ -661,6 +671,9 @@ def build_dashboard_blocks(result: dict) -> list[dict]:
         {"title": "악성품절 — 단종 판단", "action": "재발주 여부 · 단종 확정 (전체 목록, 필요시 시트에서 직접 정렬)", "tone": "dim",
          "source": "악성품절", "sort": "품절(일) 내림차순",
          "total": len(maldead), "show": len(maldead), "rows": blk6_rows},
+        {"title": "샘플의심재고 확인", "action": "이카운트에서 샘플/전시용 여부 확인 (전체 목록, 필요시 시트에서 직접 정렬)", "tone": "info",
+         "source": "샘플의심재고", "sort": "미판매(일) 내림차순",
+         "total": len(sample), "show": len(sample), "rows": blk7_rows},
     ]
 
 
@@ -686,6 +699,21 @@ def write_status_distribution_banner(service, spreadsheet_id: str, mgmt_rows: li
     ).execute()
 
 
+def with_money_total_row(rows: list[list], money_idx: int, ncols: int, label_idx: int = 2) -> list[list]:
+    """헤더 바로 아래(맨 위 데이터 행)에 재고금액 합계 행을 하나 얹는다(2026-08-06 사용자 요청).
+
+    새 리스트를 반환한다 — 원본 rows(예: result["malstock"])를 그대로 변형하면 대시보드가
+    같은 리스트를 나중에 또 써서 합계 행이 개별 품목처럼 섞여 들어간다.
+    """
+    if not rows:
+        return rows
+    total = sum(r[money_idx] for r in rows if isinstance(r[money_idx], (int, float)))
+    total_row = [""] * ncols
+    total_row[label_idx] = f"▶ 합계 ({len(rows)}건)"
+    total_row[money_idx] = total
+    return [total_row] + rows
+
+
 def _status_style(status: str):
     """STATUS_COLOR_RULES를 재사용해 대시보드 상태 셀 색을 본문 탭과 동일하게 맞춘다."""
     for substr, bg, fg, bold in STATUS_COLOR_RULES:
@@ -702,11 +730,12 @@ def write_dashboard_tab(service, spreadsheet_id: str, sheet_id: int, blocks: lis
     run_at = datetime.now(KST)
     values: list[list] = [
         ["오늘 처리할 것을 위에서부터 순서대로", "", "", "", "", "", "", "", "", "", ""],
-        [f"결과물 탭 4개에서 자동 집계 · {run_at.strftime('%Y-%m-%d %H:%M')}에 실행, "
+        [f"결과물 탭 5개에서 자동 집계 · {run_at.strftime('%Y-%m-%d %H:%M')}에 실행, "
          f"{target_date.isoformat()}(어제)까지의 ERP 데이터 반영", "", "", "", "", "", "", "", "", "", ""],
         [""] * ncols,
     ]
     row_styles: list[tuple[int, str, dict | None]] = []  # (row_idx0, kind, tone)
+    MONEY_COL_IDX = DASHBOARD_HEADERS.index("재고금액")
 
     for block in blocks:
         count_label = f"전체 {block['total']}개" if block["show"] >= block["total"] else f"상위 {block['show']} / 전체 {block['total']}개"
@@ -714,6 +743,15 @@ def write_dashboard_tab(service, spreadsheet_id: str, sheet_id: int, blocks: lis
         meta_row = f"출처: {block['source']} · 정렬: {block['sort']}"
         row_styles.append((len(values), "section", _BLOCK_TONE.get(block["tone"])))
         values.append([title_row] + [""] * (ncols - 2) + [meta_row])
+
+        # 카테고리 제목 바로 아래에 재고금액 합계 — 값이 있는 블록(악성재고/샘플의심재고)만
+        # 표시(2026-08-06 사용자 요청). 나머지 블록은 애초에 재고금액을 안 다뤄서 항상 0으로
+        # 나와 오해를 줄 수 있어 생략.
+        money_total = sum(r[MONEY_COL_IDX] for r in block["rows"] if isinstance(r[MONEY_COL_IDX], (int, float)))
+        if money_total > 0:
+            row_styles.append((len(values), "subtitle", None))
+            values.append([f"재고금액 합계 {money_total:,.0f}원"] + [""] * (ncols - 1))
+
         row_styles.append((len(values), "header", None))
         values.append(list(DASHBOARD_HEADERS))
         status_rows = []
@@ -770,6 +808,11 @@ def write_dashboard_tab(service, spreadsheet_id: str, sheet_id: int, blocks: lis
             if tone_bg is not None:
                 fmt["backgroundColor"] = tone_bg
             requests.append({"repeatCell": {"range": {"sheetId": sheet_id, "startRowIndex": row_idx, "endRowIndex": row_idx + 1, "startColumnIndex": 0, "endColumnIndex": ncols}, "cell": {"userEnteredFormat": fmt}, "fields": "userEnteredFormat(backgroundColor,textFormat)"}})
+        elif kind == "subtitle":
+            requests.append({"mergeCells": {"range": {"sheetId": sheet_id, "startRowIndex": row_idx, "endRowIndex": row_idx + 1, "startColumnIndex": 0, "endColumnIndex": ncols}, "mergeType": "MERGE_ALL"}})
+            requests.append({"repeatCell": {"range": {"sheetId": sheet_id, "startRowIndex": row_idx, "endRowIndex": row_idx + 1, "startColumnIndex": 0, "endColumnIndex": ncols},
+                                             "cell": {"userEnteredFormat": {"textFormat": {"italic": True, "foregroundColor": BODY_FG, "fontFamily": FONT_BODY, "fontSize": 9}}},
+                                             "fields": "userEnteredFormat.textFormat"}})
         elif kind == "header":
             requests.append({"repeatCell": {"range": {"sheetId": sheet_id, "startRowIndex": row_idx, "endRowIndex": row_idx + 1, "startColumnIndex": 0, "endColumnIndex": ncols},
                                              "cell": {"userEnteredFormat": {"backgroundColor": HEADER_BG, "textFormat": {"bold": True, "foregroundColor": HEADER_FG, "fontFamily": FONT_BODY, "fontSize": 9}}},
@@ -790,6 +833,10 @@ def write_dashboard_tab(service, spreadsheet_id: str, sheet_id: int, blocks: lis
                 requests.append({"repeatCell": {"range": {"sheetId": sheet_id, "startRowIndex": r_idx, "endRowIndex": r_idx + 1, "startColumnIndex": 5, "endColumnIndex": 6},
                                                  "cell": {"userEnteredFormat": {"textFormat": {"bold": True, "fontFamily": FONT_MONO, "fontSize": 9}}},
                                                  "fields": "userEnteredFormat.textFormat"}})
+                # 재고금액 — 콤마 서식 안 넣으면 자릿수가 안 읽힌다(2026-08-06 사용자 지적).
+                requests.append({"repeatCell": {"range": {"sheetId": sheet_id, "startRowIndex": r_idx, "endRowIndex": r_idx + 1, "startColumnIndex": MONEY_COL_IDX, "endColumnIndex": MONEY_COL_IDX + 1},
+                                                 "cell": {"userEnteredFormat": {"numberFormat": NUMBER_FORMAT_MONEY}},
+                                                 "fields": "userEnteredFormat.numberFormat"}})
 
     requests.append({"updateSheetProperties": {"properties": {"sheetId": sheet_id, "gridProperties": {"frozenRowCount": 2}}, "fields": "gridProperties.frozenRowCount"}})
 
@@ -900,9 +947,11 @@ def main() -> int:
     print("[runner] 3층 결과물 탭 반영 중...")
     replace_tab_rows(service, args.spreadsheet_id, "디자인팀_발주필요", result["design"])
     replace_tab_rows(service, args.spreadsheet_id, "관리팀_전체재고", result["mgmt"])
-    replace_tab_rows(service, args.spreadsheet_id, "악성재고", result["malstock"])
+    replace_tab_rows(service, args.spreadsheet_id, "악성재고",
+                      with_money_total_row(result["malstock"], money_idx=7, ncols=10))
     replace_tab_rows(service, args.spreadsheet_id, "악성품절", result["maldead"])
-    replace_tab_rows(service, args.spreadsheet_id, "샘플의심재고", result["sample"])
+    replace_tab_rows(service, args.spreadsheet_id, "샘플의심재고",
+                      with_money_total_row(result["sample"], money_idx=10, ncols=13))
     write_status_distribution_banner(service, args.spreadsheet_id, result["mgmt"])
 
     if new_master_rows:

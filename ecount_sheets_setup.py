@@ -92,6 +92,10 @@ STATUS_COLOR_RULES = [
     ("품절-지속", SEMANTIC_BROWN_BG, SEMANTIC_BROWN_FG, True),
     ("재고소량", SEMANTIC_WARNING_BG, SEMANTIC_WARNING_FG, True),
     ("과잉", SEMANTIC_INFO_BG, SEMANTIC_INFO_FG, True),
+    # 대시보드 악성재고 블록 라벨(2026-08-05 "과잉"→"미판매재고"로 수정)도 같은 파란 톤을
+    # 유지하도록 별도 매칭 규칙 추가 — 안 넣으면 위 "과잉" 규칙만 걸리던 게 텍스트가 바뀌면서
+    # 색이 안 먹는 회귀가 생긴다.
+    ("미판매재고", SEMANTIC_INFO_BG, SEMANTIC_INFO_FG, True),
     ("품절-장기", None, SEMANTIC_DIM_FG, False),
 ]
 
