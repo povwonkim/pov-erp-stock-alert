@@ -382,21 +382,28 @@ def write_headers(sheets_service, spreadsheet_id: str, tab_names: list[str]) -> 
 
         # 배너 3행 — 병합은 안 함(컬럼 고정과 충돌하므로). 대신 행 전체(전체 컬럼)에 배경색을
         # 칠해서 같은 "띠" 모양을 낸다. 텍스트는 A열에만 있고 나머지 칸은 빈 채로 배경만 깔림.
+        # 맨 위(0행)는 탭 타이틀 — 대시보드와 동일하게 11pt·왼쪽정렬 고정(2026-08-06 사용자가
+        # 모든 탭에서 직접 이렇게 맞춰뒀던 걸, 이 함수 재실행 시 9pt·기본정렬로 되돌리던 문제 수정).
         banner_rows = [
-            (0, BANNER1_BG, BANNER_FG_LIGHT, True),
-            (1, BANNER2_BG, BANNER_FG_LIGHT, True),
-            (2, BANNER3_BG, BANNER3_FG, False),
+            (0, BANNER1_BG, BANNER_FG_LIGHT, True, 11, "LEFT"),
+            (1, BANNER2_BG, BANNER_FG_LIGHT, True, 9, None),
+            (2, BANNER3_BG, BANNER3_FG, False, 9, None),
         ]
-        for row_idx, bg, fg, bold in banner_rows:
+        for row_idx, bg, fg, bold, font_size, halign in banner_rows:
+            cell_format = {
+                "backgroundColor": bg,
+                "textFormat": {"bold": bold, "italic": not bold, "foregroundColor": fg, "fontFamily": FONT_BODY, "fontSize": font_size},
+                "verticalAlignment": "MIDDLE",
+            }
+            fields = "userEnteredFormat(textFormat,backgroundColor,verticalAlignment)"
+            if halign:
+                cell_format["horizontalAlignment"] = halign
+                fields = "userEnteredFormat(textFormat,backgroundColor,verticalAlignment,horizontalAlignment)"
             requests.append({
                 "repeatCell": {
                     "range": {"sheetId": sheet_id, "startRowIndex": row_idx, "endRowIndex": row_idx + 1},
-                    "cell": {"userEnteredFormat": {
-                        "backgroundColor": bg,
-                        "textFormat": {"bold": bold, "italic": not bold, "foregroundColor": fg, "fontFamily": FONT_BODY, "fontSize": 9},
-                        "verticalAlignment": "MIDDLE",
-                    }},
-                    "fields": "userEnteredFormat(textFormat,backgroundColor,verticalAlignment)",
+                    "cell": {"userEnteredFormat": cell_format},
+                    "fields": fields,
                 }
             })
 
@@ -475,10 +482,23 @@ def write_headers(sheets_service, spreadsheet_id: str, tab_names: list[str]) -> 
                     "repeatCell": {
                         "range": {"sheetId": sheet_id, "startRowIndex": DATA_START_IDX, "endRowIndex": 1000,
                                    "startColumnIndex": col, "endColumnIndex": col + 1},
-                        "cell": {"userEnteredFormat": {"numberFormat": NUMBER_FORMAT_DATE}},
-                        "fields": "userEnteredFormat.numberFormat",
+                        "cell": {"userEnteredFormat": {"numberFormat": NUMBER_FORMAT_DATE, "horizontalAlignment": "RIGHT"}},
+                        "fields": "userEnteredFormat(numberFormat,horizontalAlignment)",
                     }
                 })
+
+        # 악성재고/샘플의심재고는 조치 칸도 오른쪽 정렬(2026-08-06 사용자 요청 — 값 컬럼들과
+        # 시각적으로 줄맞춤). 다른 탭의 조치 칸(디자인팀_발주필요 등)은 건드리지 않는다.
+        if name in ("악성재고", "샘플의심재고") and "조치" in headers:
+            action_col = headers.index("조치")
+            requests.append({
+                "repeatCell": {
+                    "range": {"sheetId": sheet_id, "startRowIndex": DATA_START_IDX, "endRowIndex": 1000,
+                               "startColumnIndex": action_col, "endColumnIndex": action_col + 1},
+                    "cell": {"userEnteredFormat": {"horizontalAlignment": "RIGHT"}},
+                    "fields": "userEnteredFormat.horizontalAlignment",
+                }
+            })
 
         # 총재고는 다른 숫자 컬럼(창고별 재고 등)과 구분되는 합계 컬럼이라 항상 볼드체로 강조
         # (2026-07-28 사용자 요청) — numeric_col_formats 다음에 둬야 폰트만 있는 그 서식을
