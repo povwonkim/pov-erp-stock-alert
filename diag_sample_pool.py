@@ -37,7 +37,7 @@ def main() -> int:
     creds = _load_creds()
     from googleapiclient.discovery import build
     service = build("sheets", "v4", credentials=creds)
-    history = read_tab_rows(service, args.spreadsheet_id, "일별재고이력")
+    history = read_tab_rows(service, args.spreadsheet_id, "RAW_일별재고이력")
     hist_by_item: dict[str, dict[str, dict]] = {}
     for r in history:
         hist_by_item.setdefault(r["품목코드"], {})[r["날짜"]] = r
@@ -79,7 +79,7 @@ def main() -> int:
             if len(examples) < 5:
                 examples.append((code, qty, 미판매, 미입고))
 
-    print(f"[diag] 일별재고이력에 해당 품목코드 행 자체가 아예 없음: {no_hist_at_all}개 (예: {no_hist_examples})")
+    print(f"[diag] RAW_일별재고이력에 해당 품목코드 행 자체가 아예 없음: {no_hist_at_all}개 (예: {no_hist_examples})")
     print(f"[diag] 최근판매일 근거 있음: {has_sale_hist}개")
     print(f"[diag] 최근입고일 근거 있음: {has_inbound_hist}개")
     print(f"[diag] 둘 다 근거 있음: {has_both_hist}개")

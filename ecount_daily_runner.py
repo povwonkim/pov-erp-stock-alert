@@ -5,9 +5,9 @@
   1. 이카운트 창고별재고현황 API로 오늘 시점 재고 스냅샷 조회 (전체 창고, RAW 그대로 저장)
   2. Gmail에서 이카운트 "판매현황" 자동발송 이메일의 첨부 엑셀을 받아 파싱 (전체 창고, RAW 그대로 저장)
   3. 두 원본을 오프라인 4개 창고로 필터링 + RAW_품목마스터(브랜드/조달유형/리드타임) 조인
-  4. 일별재고이력에서 전일 데이터를 읽어 전일재고·품절경과일 연속성 계산, 입고수량 역산
+  4. RAW_일별재고이력에서 전일 데이터를 읽어 전일재고·품절경과일 연속성 계산, 입고수량 역산
   5. DOI·상태·우선순위·조치방안 계산 (README "DOI 기반 우선순위 체계" 참고)
-  6. 일별재고이력에 오늘자 행 누적, 3층 결과물 탭(디자인팀_발주필요/관리팀_전체재고/악성재고/
+  6. RAW_일별재고이력에 오늘자 행 누적, 3층 결과물 탭(디자인팀_발주필요/관리팀_전체재고/악성재고/
      악성품절) 재작성
 
 기준일(TARGET_DATE) 하나로 통일: 이카운트 판매현황 자동알림의 "기준일자=전일" 관례를 그대로
@@ -276,12 +276,12 @@ def replace_tab_rows(service, spreadsheet_id: str, tab_name: str, rows: list[lis
 
 
 def append_history_rows(service, spreadsheet_id: str, target_date_str: str, new_rows: list[list]) -> None:
-    """일별재고이력은 누적이지만, 같은 날짜로 재실행하면 그 날짜 행만 지우고 다시 쓴다(재실행 안전)."""
-    headers = TABS["일별재고이력"]["headers"]
-    existing = read_tab_rows(service, spreadsheet_id, "일별재고이력")
+    """RAW_일별재고이력은 누적이지만, 같은 날짜로 재실행하면 그 날짜 행만 지우고 다시 쓴다(재실행 안전)."""
+    headers = TABS["RAW_일별재고이력"]["headers"]
+    existing = read_tab_rows(service, spreadsheet_id, "RAW_일별재고이력")
     kept = [[r[h] for h in headers] for r in existing if r["날짜"] != target_date_str]
     all_rows = kept + new_rows
-    replace_tab_rows(service, spreadsheet_id, "일별재고이력", all_rows)
+    replace_tab_rows(service, spreadsheet_id, "RAW_일별재고이력", all_rows)
 
 
 def auto_register_new_items(item_master: dict, sales_raw: list[dict], target_date: date) -> list[list]:
@@ -389,7 +389,7 @@ def stockout_bucket(품절경과일: int) -> str:
 
 def build_daily_rows(target_date: date, inventory_raw: list[dict], sales_raw: list[dict],
                       item_master: dict[str, dict], history: list[dict]) -> dict:
-    """오늘자 일별재고이력 행들과 3층 결과물을 계산해서 반환."""
+    """오늘자 RAW_일별재고이력 행들과 3층 결과물을 계산해서 반환."""
     target_str = target_date.isoformat()
     prev_str = (target_date - timedelta(days=1)).isoformat()
 
@@ -437,7 +437,7 @@ def build_daily_rows(target_date: date, inventory_raw: list[dict], sales_raw: li
         리드타임 = meta.get("리드타임", "")
         품목명 = name_by_item.get(code, meta.get("품목명", ""))
 
-        # 단종/제외 품목 — 이 시스템 어디에도(일별재고이력 포함) 아예 안 남긴다(2026-08-04
+        # 단종/제외 품목 — 이 시스템 어디에도(RAW_일별재고이력 포함) 아예 안 남긴다(2026-08-04
         # 사용자 확정: "시즌아이템이라서 이제는 단종되거나 여기에 두어도 의미없는 건 제외").
         # 품목명에 "(단종)"이 붙어있으면 이카운트 쪽에서 이미 단종 처리한 것으로 보고 제외.
         # EXCLUDED_BRANDS(ARCHIVE. Object/PointofView)는 2026-07-28에 이미 제외하기로
@@ -945,7 +945,7 @@ def main() -> int:
                        "품목명": r["품목명"]}
         for r in master_rows if r["품목코드"]
     }
-    history = read_tab_rows(service, args.spreadsheet_id, "일별재고이력")
+    history = read_tab_rows(service, args.spreadsheet_id, "RAW_일별재고이력")
     print(f"[runner] RAW_품목마스터 {len(item_master)}건, 이력 {len(history)}행 로드")
 
     new_master_rows = auto_register_new_items(item_master, sales_raw, target_date)
@@ -970,7 +970,7 @@ def main() -> int:
     replace_tab_rows(service, args.spreadsheet_id, "RAW_재고현황", raw_inv_rows)
     replace_tab_rows(service, args.spreadsheet_id, "RAW_판매현황", raw_sales_rows)
 
-    print("[runner] 일별재고이력 반영 중...")
+    print("[runner] RAW_일별재고이력 반영 중...")
     append_history_rows(service, args.spreadsheet_id, target_date.isoformat(), result["history"])
 
     print("[runner] 3층 결과물 탭 반영 중...")

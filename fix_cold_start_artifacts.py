@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""일별재고이력의 "가짜 입고" 아티팩트를 제거하는 1회성 스크립트.
+"""RAW_일별재고이력의 "가짜 입고" 아티팩트를 제거하는 1회성 스크립트.
 
 배경(2026-08-04): 크론이 며칠 실패하던 시기(7/28~29, 7/31 등)에 이력이 군데군데
 비어서, 그 다음 날 계산할 때 "전일재고"를 찾을 행이 없어 0으로 기본값 처리됐다.
@@ -40,13 +40,13 @@ def main() -> int:
     from googleapiclient.discovery import build
     service = build("sheets", "v4", credentials=creds)
 
-    headers = TABS["일별재고이력"]["headers"]
+    headers = TABS["RAW_일별재고이력"]["headers"]
     idx_전일재고 = headers.index("전일재고")
     idx_출고 = headers.index("출고")
     idx_입고 = headers.index("입고")
 
-    existing = read_tab_rows(service, args.spreadsheet_id, "일별재고이력")
-    print(f"[fix] 기존 일별재고이력 {len(existing)}행")
+    existing = read_tab_rows(service, args.spreadsheet_id, "RAW_일별재고이력")
+    print(f"[fix] 기존 RAW_일별재고이력 {len(existing)}행")
 
     rows_as_lists = [[r[h] for h in headers] for r in existing]
     dates_by_code: dict[str, set[str]] = {}
@@ -85,8 +85,8 @@ def main() -> int:
         return 0
 
     rows_as_lists.sort(key=lambda r: (r[0], r[2]))
-    replace_tab_rows(service, args.spreadsheet_id, "일별재고이력", rows_as_lists)
-    print(f"[fix] 일별재고이력 반영 완료 (총 {len(rows_as_lists)}행)")
+    replace_tab_rows(service, args.spreadsheet_id, "RAW_일별재고이력", rows_as_lists)
+    print(f"[fix] RAW_일별재고이력 반영 완료 (총 {len(rows_as_lists)}행)")
     return 0
 
 

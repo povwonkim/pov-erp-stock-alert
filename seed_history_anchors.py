@@ -2,12 +2,12 @@
 """악성재고/샘플의심재고 1회성 시드(seed_aging_stock.py)가 다음 날 자동실행 때 통째로
 사라지는 문제를 막기 위한 1회성 스크립트.
 
-배경(2026-07-30): ecount_daily_runner.py는 악성재고/샘플의심재고 탭을 "일별재고이력"에서
-직접 계산한다(최근판매일=일별재고이력에서 출고>0인 가장 최근 날짜). 그런데 일별재고이력은
+배경(2026-07-30): ecount_daily_runner.py는 악성재고/샘플의심재고 탭을 "RAW_일별재고이력"에서
+직접 계산한다(최근판매일=RAW_일별재고이력에서 출고>0인 가장 최근 날짜). 그런데 RAW_일별재고이력은
 이 시스템이 스스로 쌓은 것만 알아서, 오늘 엑셀 기반으로 만든 seed_aging_stock.py의 결과는
 내일 자동실행 때 "판매 이력 근거 없음"으로 덮어써져 사라진다.
 
-해결: 결과 탭이 아니라 "일별재고이력"에 합성 앵커 행을 심는다. 예를 들어 어떤 품목이
+해결: 결과 탭이 아니라 "RAW_일별재고이력"에 합성 앵커 행을 심는다. 예를 들어 어떤 품목이
 "최근 91~179일 사이 마지막 판매"로 추정됐다면, (오늘-미판매추정일) 날짜에 출고=1인
 합성 행 하나를 추가한다. 그러면 ecount_daily_runner.py의 기존 계산 로직이 이 행을
 그대로 읽어서 최근판매일을 알아내고, 이후 매일 미판매(일)이 자연스럽게 +1씩 늘어난다
@@ -47,10 +47,10 @@ def main() -> int:
     from googleapiclient.discovery import build
     service = build("sheets", "v4", credentials=creds)
 
-    headers = TABS["일별재고이력"]["headers"]
-    existing = read_tab_rows(service, args.spreadsheet_id, "일별재고이력")
+    headers = TABS["RAW_일별재고이력"]["headers"]
+    existing = read_tab_rows(service, args.spreadsheet_id, "RAW_일별재고이력")
     existing_keys = {(r["품목코드"], r["날짜"]) for r in existing}
-    print(f"[seed-hist] 기존 일별재고이력 {len(existing)}행")
+    print(f"[seed-hist] 기존 RAW_일별재고이력 {len(existing)}행")
 
     skipped = 0
     new_rows = []
@@ -70,8 +70,8 @@ def main() -> int:
     all_rows = existing_as_lists + new_rows
     all_rows.sort(key=lambda r: (r[0], r[2]))  # 날짜 오름차순 → 품목코드순 (탭 정렬 규칙)
 
-    replace_tab_rows(service, args.spreadsheet_id, "일별재고이력", all_rows)
-    print(f"[seed-hist] 일별재고이력 반영 완료 (총 {len(all_rows)}행)")
+    replace_tab_rows(service, args.spreadsheet_id, "RAW_일별재고이력", all_rows)
+    print(f"[seed-hist] RAW_일별재고이력 반영 완료 (총 {len(all_rows)}행)")
     return 0
 
 

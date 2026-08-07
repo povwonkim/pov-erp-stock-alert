@@ -38,10 +38,10 @@ def main() -> int:
     from googleapiclient.discovery import build
     service = build("sheets", "v4", credentials=creds)
 
-    hist_headers = TABS["일별재고이력"]["headers"]
-    existing = read_tab_rows(service, args.spreadsheet_id, "일별재고이력")
+    hist_headers = TABS["RAW_일별재고이력"]["headers"]
+    existing = read_tab_rows(service, args.spreadsheet_id, "RAW_일별재고이력")
     existing_keys = {(r["품목코드"], r["날짜"]) for r in existing}
-    print(f"[seed-v2] 기존 일별재고이력 {len(existing)}행")
+    print(f"[seed-v2] 기존 RAW_일별재고이력 {len(existing)}행")
 
     new_anchor_rows = [r for r in anchor_rows if (r[2], r[0]) not in existing_keys]
     print(f"[seed-v2] 실제 추가할 입고 앵커 {len(new_anchor_rows)}건 "
@@ -54,8 +54,8 @@ def main() -> int:
     existing_as_lists = [[r[h] for h in hist_headers] for r in existing]
     all_hist_rows = existing_as_lists + new_anchor_rows
     all_hist_rows.sort(key=lambda r: (r[0], r[2]))
-    replace_tab_rows(service, args.spreadsheet_id, "일별재고이력", all_hist_rows)
-    print(f"[seed-v2] 일별재고이력 반영 완료 (총 {len(all_hist_rows)}행)")
+    replace_tab_rows(service, args.spreadsheet_id, "RAW_일별재고이력", all_hist_rows)
+    print(f"[seed-v2] RAW_일별재고이력 반영 완료 (총 {len(all_hist_rows)}행)")
 
     replace_tab_rows(service, args.spreadsheet_id, "샘플의심재고", sample_rows)
     print("[seed-v2] 샘플의심재고 탭 반영 완료")

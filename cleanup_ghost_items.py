@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""소계(합계) 행 오파싱으로 잘못 등록된 유령 품목을 RAW_품목마스터/일별재고이력에서 제거.
+"""소계(합계) 행 오파싱으로 잘못 등록된 유령 품목을 RAW_품목마스터/RAW_일별재고이력에서 제거.
 
 배경(2026-08-06): ecount_sales_scraper.py가 이카운트 판매현황 웹 표의 "소계" 행(라벨
 칸이 colspan으로 병합돼 있어 정상 품목 행보다 칸 수가 적음)을 정상 품목 행으로 오인해서,
@@ -74,12 +74,12 @@ def main() -> int:
     if len(ghost_rows) > 10:
         print(f"  ... 외 {len(ghost_rows) - 10}개")
 
-    # ---- 일별재고이력(같은 유령 코드로 매일 쌓인 행들) ----
-    hist_headers = TABS["일별재고이력"]["headers"]
-    hist_rows = read_tab_rows(service, args.spreadsheet_id, "일별재고이력")
+    # ---- RAW_일별재고이력(같은 유령 코드로 매일 쌓인 행들) ----
+    hist_headers = TABS["RAW_일별재고이력"]["headers"]
+    hist_rows = read_tab_rows(service, args.spreadsheet_id, "RAW_일별재고이력")
     ghost_hist = [r for r in hist_rows if r["품목코드"] in ghost_codes]
     kept_hist = [r for r in hist_rows if r["품목코드"] not in ghost_codes]
-    print(f"[cleanup] 일별재고이력 {len(hist_rows)}행 중 유령 품목 관련 {len(ghost_hist)}행 발견")
+    print(f"[cleanup] RAW_일별재고이력 {len(hist_rows)}행 중 유령 품목 관련 {len(ghost_hist)}행 발견")
 
     if args.dry_run:
         print("[cleanup] --dry-run: 시트에 쓰지 않음")
@@ -94,9 +94,9 @@ def main() -> int:
     print("[cleanup] RAW_품목마스터 정리 완료")
 
     if ghost_hist:
-        replace_tab_rows(service, args.spreadsheet_id, "일별재고이력",
+        replace_tab_rows(service, args.spreadsheet_id, "RAW_일별재고이력",
                           [[r[h] for h in hist_headers] for r in kept_hist])
-        print("[cleanup] 일별재고이력 정리 완료")
+        print("[cleanup] RAW_일별재고이력 정리 완료")
 
     return 0
 

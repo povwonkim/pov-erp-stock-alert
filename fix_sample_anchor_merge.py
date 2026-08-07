@@ -36,9 +36,9 @@ def main() -> int:
     from googleapiclient.discovery import build
     service = build("sheets", "v4", credentials=creds)
 
-    headers = TABS["일별재고이력"]["headers"]
-    existing = read_tab_rows(service, args.spreadsheet_id, "일별재고이력")
-    print(f"[fix] 기존 일별재고이력 {len(existing)}행")
+    headers = TABS["RAW_일별재고이력"]["headers"]
+    existing = read_tab_rows(service, args.spreadsheet_id, "RAW_일별재고이력")
+    print(f"[fix] 기존 RAW_일별재고이력 {len(existing)}행")
 
     idx_입고 = headers.index("입고")
     merged = 0
@@ -63,8 +63,8 @@ def main() -> int:
         return 0
 
     rows_as_lists.sort(key=lambda r: (r[0], r[2]))
-    replace_tab_rows(service, args.spreadsheet_id, "일별재고이력", rows_as_lists)
-    print(f"[fix] 일별재고이력 반영 완료 (총 {len(rows_as_lists)}행)")
+    replace_tab_rows(service, args.spreadsheet_id, "RAW_일별재고이력", rows_as_lists)
+    print(f"[fix] RAW_일별재고이력 반영 완료 (총 {len(rows_as_lists)}행)")
     return 0
 
 
