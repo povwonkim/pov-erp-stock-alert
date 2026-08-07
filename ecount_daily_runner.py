@@ -591,7 +591,7 @@ def build_daily_rows(target_date: date, inventory_raw: list[dict], sales_raw: li
 # 5. 대시보드 — "오늘 처리할 것" 큐. 이미 계산된 4개 결과물 리스트를 잘라서 조립할 뿐,
 #    새로 계산하지 않는다(같은 데이터가 두 군데서 다르게 나오는 걸 막기 위해).
 # ---------------------------------------------------------------------------
-DASHBOARD_HEADERS = ["순위", "브랜드", "품목명", "조달유형", "상태", "재고", "7일 판매", "DOI(소진일)", "경과(일)", "재고금액", "조치"]
+DASHBOARD_HEADERS = ["순위", "브랜드", "품목코드", "품목명", "조달유형", "상태", "재고", "7일 판매", "DOI(소진일)", "경과(일)", "재고금액", "조치"]
 
 # (제목, 배경색 톤) — 목업의 "색" 컬럼과 동일한 배정.
 _BLOCK_TONE = {
@@ -599,8 +599,8 @@ _BLOCK_TONE = {
 }
 
 
-def _dashboard_row(rank: int, brand, name, ptype, status, qty, sales7, doi, elapsed, money, action) -> list:
-    return [rank, brand, name, ptype, status, qty, sales7, doi, elapsed, money, action]
+def _dashboard_row(rank: int, brand, code, name, ptype, status, qty, sales7, doi, elapsed, money, action) -> list:
+    return [rank, brand, code, name, ptype, status, qty, sales7, doi, elapsed, money, action]
 
 
 def build_dashboard_blocks(result: dict) -> list[dict]:
@@ -610,26 +610,26 @@ def build_dashboard_blocks(result: dict) -> list[dict]:
 
     def from_design(r, rank):
         # r: 브랜드,코드,품목명,조달유형,상태,우선순위,리드타임,재고,DOI,7일,90일,품절(일),조치,메모
-        return _dashboard_row(rank, r[0], r[2], r[3], r[4], r[7], r[9], r[8], r[11], "", r[12])
+        return _dashboard_row(rank, r[0], r[1], r[2], r[3], r[4], r[7], r[9], r[8], r[11], "", r[12])
 
     def from_mgmt(r, rank, elapsed=""):
         # r: 브랜드,코드,품목명,조달유형,상태,리드타임,4창고,총재고,전일재고,입고,출고,7일,DOI,조치,메모
-        return _dashboard_row(rank, r[0], r[2], r[3], r[4], r[10], r[14], r[15], elapsed, "", r[16])
+        return _dashboard_row(rank, r[0], r[1], r[2], r[3], r[4], r[10], r[14], r[15], elapsed, "", r[16])
 
     def from_malstock(r, rank):
         # r: 브랜드,코드,품목명,재고,최근판매일,미판매(일),입고단가,재고금액,조치,메모
         # "과잉"(수량 많음)이 아니라 "미판매"(수량과 무관하게 오래 안 팔림)가 기준 —
         # 재고 1개짜리도 90일 이상 안 팔리면 여기 잡힌다(2026-08-05, 사용자 지적으로 라벨 수정).
-        return _dashboard_row(rank, r[0], r[2], "", "🔵 미판매재고", r[3], "", "", r[5], r[7], r[8])
+        return _dashboard_row(rank, r[0], r[1], r[2], "", "🔵 미판매재고", r[3], "", "", r[5], r[7], r[8])
 
     def from_maldead(r, rank):
         # r: 브랜드,코드,품목명,조달유형,리드타임,재고,최근판매일,미판매(일),품절(일),품절구간,최근입고일,미입고(일),90일,조치,메모
         # 재고금액은 항상 0(품절 = 재고 0)이라 의미 없어서 안 넣는다.
-        return _dashboard_row(rank, r[0], r[2], r[3], "⚫ 품절-장기", r[5], "", "", r[7], "", r[13])
+        return _dashboard_row(rank, r[0], r[1], r[2], r[3], "⚫ 품절-장기", r[5], "", "", r[7], "", r[13])
 
     def from_sample(r, rank):
         # r: 브랜드,코드,품목명,조달유형,재고,최근판매일,미판매(일),최근입고일,미입고(일),입고단가,재고금액,조치,메모
-        return _dashboard_row(rank, r[0], r[2], r[3], "🟣 샘플의심", r[4], "", "", r[6], r[10], r[11])
+        return _dashboard_row(rank, r[0], r[1], r[2], r[3], "🟣 샘플의심", r[4], "", "", r[6], r[10], r[11])
 
     blk1_rows = [from_design(r, i + 1) for i, r in enumerate(design[:20])]
     blk2_src = sorted([r for r in design if isinstance(r[11], int) and r[11] >= 3], key=lambda r: -r[11])
@@ -758,13 +758,16 @@ def write_dashboard_tab(service, spreadsheet_id: str, sheet_id: int, blocks: lis
     # 따름) 기준일만 보면 하루 늦은 것처럼 오해할 수 있다(2026-08-04 사용자 확인).
     run_at = datetime.now(KST)
     values: list[list] = [
-        ["오늘 처리할 것을 위에서부터 순서대로", "", "", "", "", "", "", "", "", "", ""],
+        ["오늘 처리할 것을 위에서부터 순서대로"] + [""] * (ncols - 1),
         [f"결과물 탭 5개에서 자동 집계 · {run_at.strftime('%Y-%m-%d %H:%M')}에 실행, "
-         f"{target_date.isoformat()}(어제)까지의 ERP 데이터 반영", "", "", "", "", "", "", "", "", "", ""],
+         f"{target_date.isoformat()}(어제)까지의 ERP 데이터 반영"] + [""] * (ncols - 1),
         [""] * ncols,
     ]
     row_styles: list[tuple[int, str, dict | None]] = []  # (row_idx0, kind, tone)
     MONEY_COL_IDX = DASHBOARD_HEADERS.index("재고금액")
+    STATUS_COL_IDX = DASHBOARD_HEADERS.index("상태")
+    QTY_COL_IDX = DASHBOARD_HEADERS.index("재고")
+    ACTION_COL_IDX = DASHBOARD_HEADERS.index("조치")
 
     for block in blocks:
         count_label = f"전체 {block['total']}개" if block["show"] >= block["total"] else f"상위 {block['show']} / 전체 {block['total']}개"
@@ -848,18 +851,18 @@ def write_dashboard_tab(service, spreadsheet_id: str, sheet_id: int, blocks: lis
                                              "fields": "userEnteredFormat(backgroundColor,textFormat)"}})
         elif kind == "statusrows":
             for r_idx in extra:
-                status_val = values[r_idx][4]
+                status_val = values[r_idx][STATUS_COL_IDX]
                 bg, fg, bold = _status_style(status_val)
                 fmt = {"textFormat": {"foregroundColor": fg, "bold": bold, "fontFamily": FONT_BODY, "fontSize": 9}}
                 if bg is not None:
                     fmt["backgroundColor"] = bg
-                requests.append({"repeatCell": {"range": {"sheetId": sheet_id, "startRowIndex": r_idx, "endRowIndex": r_idx + 1, "startColumnIndex": 4, "endColumnIndex": 5}, "cell": {"userEnteredFormat": fmt}, "fields": "userEnteredFormat(backgroundColor,textFormat)"}})
+                requests.append({"repeatCell": {"range": {"sheetId": sheet_id, "startRowIndex": r_idx, "endRowIndex": r_idx + 1, "startColumnIndex": STATUS_COL_IDX, "endColumnIndex": STATUS_COL_IDX + 1}, "cell": {"userEnteredFormat": fmt}, "fields": "userEnteredFormat(backgroundColor,textFormat)"}})
                 # 숫자 컬럼(재고/7일판매/DOI/경과/재고금액) 고정폭 우측정렬.
-                requests.append({"repeatCell": {"range": {"sheetId": sheet_id, "startRowIndex": r_idx, "endRowIndex": r_idx + 1, "startColumnIndex": 5, "endColumnIndex": 10},
+                requests.append({"repeatCell": {"range": {"sheetId": sheet_id, "startRowIndex": r_idx, "endRowIndex": r_idx + 1, "startColumnIndex": QTY_COL_IDX, "endColumnIndex": ACTION_COL_IDX},
                                                  "cell": {"userEnteredFormat": {"horizontalAlignment": "RIGHT", "textFormat": {"fontFamily": FONT_MONO, "fontSize": 9}}},
                                                  "fields": "userEnteredFormat(horizontalAlignment,textFormat)"}})
                 # 재고는 관리팀_전체재고의 총재고와 동일하게 항상 볼드체로 강조(2026-07-28 사용자 요청).
-                requests.append({"repeatCell": {"range": {"sheetId": sheet_id, "startRowIndex": r_idx, "endRowIndex": r_idx + 1, "startColumnIndex": 5, "endColumnIndex": 6},
+                requests.append({"repeatCell": {"range": {"sheetId": sheet_id, "startRowIndex": r_idx, "endRowIndex": r_idx + 1, "startColumnIndex": QTY_COL_IDX, "endColumnIndex": QTY_COL_IDX + 1},
                                                  "cell": {"userEnteredFormat": {"textFormat": {"bold": True, "fontFamily": FONT_MONO, "fontSize": 9}}},
                                                  "fields": "userEnteredFormat.textFormat"}})
                 # 재고금액 — 콤마 서식 안 넣으면 자릿수가 안 읽힌다(2026-08-06 사용자 지적).
