@@ -8,10 +8,15 @@
   - KR로 시작 → 국내사입(기본)
   - 그 외 국가코드(JP/US/UK/FR/DE...) → 해외수입(기본, 가장 보수적 = 안전한 기본값)
   - 숫자로만 된 코드(00001~00020대) → POV가 직접 관리하는 사내 카테고리. 이 중 실제로
-    자체제작하는 브랜드만 SELF_MADE_BRANDS로 확정하고, 나머지는 AMBIGUOUS로 분류해
-    조달유형은 임시로 해외수입 기본값을 쓰되 검토 리포트에 표로 뽑아준다.
-  - MANUAL_OVERRIDES: 브랜드 원산지와 실제 조달경로가 다른 경우(PILOT/Midori는 일본
-    브랜드지만 국내 유통사를 통해 사입) — 국가코드보다 우선 적용.
+    자체제작하는 브랜드만 BRAND_OVERRIDES(아래)에 "자체제작"으로 확정하고, 나머지는
+    AMBIGUOUS로 분류해 조달유형은 임시로 해외수입 기본값을 쓰되 검토 리포트에 표로 뽑아준다.
+  - BRAND_OVERRIDES: 브랜드 원산지(국가코드)와 실제 조달경로가 다른 경우(예: 일본 브랜드지만
+    국내 유통사를 통해 사입) — 국가코드보다 우선 적용. brand_type_overrides.json 파일에서
+    읽어온다(2026-08-06부터 — 브랜드 수가 많아 코드 대신 JSON으로 관리, export_brand_types.py로
+    전체 브랜드 목록을 엑셀로 뽑아 사람이 검토·수정한 뒤 이 JSON에 반영하는 방식).
+
+조달유형은 4가지: 자체제작 / 국내사입 / 국내위탁 / 해외수입 (2026-08-06 사용자 확정 —
+기존 3가지에 "국내위탁" 추가. 국내 유통사를 통해 위탁판매/소싱하는 경우를 국내사입과 구분).
 
 사용법:
   # 1) 분류 리포트만 보기(시트에 아무것도 안 씀)
@@ -23,6 +28,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import re
 from datetime import date
 from pathlib import Path
@@ -30,30 +36,19 @@ from pathlib import Path
 from openpyxl import load_workbook
 
 # ---- 조달유형별 리드타임 (README/ecount_sheets_setup.py와 동일하게 유지) ----
-LEADTIME_BY_TYPE = {"자체제작": 30, "국내사입": 7, "해외수입": 21}
+# 국내위탁 리드타임은 아직 사용자 확인 전이라 국내사입과 동일한 기본값(7일)을 임시로 씀 —
+# 실제 값이 다르면 여기와 ecount_daily_runner.py의 RISK_WARN_BY_TYPE을 같이 바꿀 것.
+LEADTIME_BY_TYPE = {"자체제작": 30, "국내사입": 7, "국내위탁": 7, "해외수입": 21}
 
-# 실제 POV 자체제작 브랜드로 확정된 것만 (2026-07-27~28 이카운트 품목그룹2 화면 + 사용자 확인).
-# POV_application: 판매용은 아니지만(쇼핑백/봉투 등 비품) 재제작 필요 여부를 추적해야 해서
-# 자체제작과 동일하게 관리.
-SELF_MADE_BRANDS = {
-    "POV_original", "POV Atelier", "POV x Hello Kitty", "POV x KBP", "POV_한글박물관",
-    "POV_collaboration", "POV_inventario", "PRESSPRESS", "PRESSPRESS_collaboration", "양지사",
-    "POV_application",
-}
-
-# 브랜드 원산지(국가코드)와 실제 조달경로가 다른 경우 — 국가코드 기본값보다 우선 적용.
-# 2026-07-28 사용자 확인.
-MANUAL_OVERRIDES = {
-    "PILOT": "국내사입",             # 일본 브랜드, 국내 유통사 통해 사입
-    "Midori": "국내사입",            # 동일
-    "KBP": "국내사입",               # KR013 — 국가코드로도 이미 잡히지만 명시적으로 확인됨
-    "GONGJANG(공장)": "국내사입",     # KR050 — 동일
-    "BOOK": "국내사입",              # 매입
-    "해외서적": "국내사입",           # 해외 서적이지만 국내에서 매입
-    "VIEWPOINT": "국내사입",
-    "프란츠(FRANZ)": "국내사입",
-    "OTHER": "국내사입",             # 섞여있음 — SKU_OVERRIDES로 예외 처리(아래)
-}
+# 브랜드 단위 조달유형 확정/예외 목록 — brand_type_overrides.json에서 읽어온다(국가코드 기본값
+# 판정보다 항상 우선 적용). 새 브랜드를 추가/수정할 땐 이 코드가 아니라 그 JSON 파일을 고치면 됨
+# (export_brand_types.py로 전체 목록을 엑셀로 뽑아 검토하는 걸 권장 — 브랜드명이 이카운트에
+# 등록된 것과 한 글자라도 다르면(대소문자/띄어쓰기/특수문자) 매칭이 안 됨에 유의).
+_BRAND_OVERRIDES_PATH = Path(__file__).parent / "brand_type_overrides.json"
+try:
+    BRAND_OVERRIDES: dict[str, str] = json.loads(_BRAND_OVERRIDES_PATH.read_text(encoding="utf-8"))
+except FileNotFoundError:
+    BRAND_OVERRIDES = {}
 
 # 재고 성격이 안 맞거나(대여 서비스 등) 이 시스템에서 아예 다루지 않기로 한 브랜드.
 # 2026-07-28 사용자 확인: 가져오지 않기로 함.
@@ -91,10 +86,8 @@ def classify(brand: str, brand_code: str, item_code: str = "") -> tuple[str, boo
 
     if item_code in SKU_OVERRIDES:
         return SKU_OVERRIDES[item_code], True
-    if brand in SELF_MADE_BRANDS:
-        return "자체제작", True
-    if brand in MANUAL_OVERRIDES:
-        return MANUAL_OVERRIDES[brand], True
+    if brand in BRAND_OVERRIDES:
+        return BRAND_OVERRIDES[brand], True
 
     m = re.match(r"^([A-Za-z]{2})", brand_code)
     if m:
@@ -180,7 +173,7 @@ def print_report(brand_stats: dict, excluded_count: int) -> None:
         by_type.setdefault(dominant, []).append((b, s))
 
     print("\n[품목마스터] 조달유형별 브랜드/품목 집계:")
-    for t in ("자체제작", "국내사입", "해외수입"):
+    for t in ("자체제작", "국내사입", "국내위탁", "해외수입"):
         items = by_type.get(t, [])
         total_skus = sum(s["count"] for _, s in items)
         print(f"  {t}: 브랜드 {len(items)}개, 품목 {total_skus}개")
