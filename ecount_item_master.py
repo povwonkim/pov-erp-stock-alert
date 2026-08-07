@@ -207,7 +207,7 @@ def write_to_sheet(spreadsheet_id: str, rows: list[list]) -> None:
     from google.oauth2.credentials import Credentials
     from googleapiclient.discovery import build
 
-    from ecount_sheets_setup import _TOKEN_FILE, SCOPES, DATA_START_IDX
+    from ecount_sheets_setup import _TOKEN_FILE, SCOPES, DATA_START_IDX, ITEM_MASTER_TAB
 
     creds = Credentials.from_authorized_user_file(str(_TOKEN_FILE), SCOPES)
     if creds.expired and creds.refresh_token:
@@ -217,11 +217,11 @@ def write_to_sheet(spreadsheet_id: str, rows: list[list]) -> None:
     # 기존 데이터(5행부터) 지우고 새로 쓴다 — 품목마스터는 매번 통째로 재생성하는 게 안전
     # (신상품 추가/브랜드 재분류가 매번 반영되게).
     service.spreadsheets().values().batchClear(
-        spreadsheetId=spreadsheet_id, body={"ranges": [f"'품목마스터'!A{DATA_START_IDX + 1}:Z100000"]}
+        spreadsheetId=spreadsheet_id, body={"ranges": [f"'{ITEM_MASTER_TAB}'!A{DATA_START_IDX + 1}:Z100000"]}
     ).execute()
     service.spreadsheets().values().update(
         spreadsheetId=spreadsheet_id,
-        range=f"'품목마스터'!A{DATA_START_IDX + 1}",
+        range=f"'{ITEM_MASTER_TAB}'!A{DATA_START_IDX + 1}",
         valueInputOption="RAW",
         body={"values": rows},
     ).execute()

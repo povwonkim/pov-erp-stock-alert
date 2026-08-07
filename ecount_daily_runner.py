@@ -31,7 +31,8 @@ from openpyxl import load_workbook
 from ecount_client import EcountClient
 from ecount_item_master import EXCLUDED_BRANDS, EXCLUDED_ITEM_NAMES, LEADTIME_BY_TYPE
 from ecount_sheets_setup import (
-    TABS, OFFLINE_WAREHOUSES, OFFLINE_WAREHOUSE_CODES, DATA_START_IDX, _TOKEN_FILE, SCOPES,
+    TABS, OFFLINE_WAREHOUSES, OFFLINE_WAREHOUSE_CODES, DATA_START_IDX, ITEM_MASTER_TAB,
+    _TOKEN_FILE, SCOPES,
     STATUS_COLOR_RULES, BANNER1_BG, BANNER_FG_LIGHT, BANNER3_BG, BANNER3_FG,
     HEADER_BG, HEADER_FG, FONT_BODY, FONT_MONO, BODY_FG,
     SEMANTIC_DANGER_BG, SEMANTIC_INFO_BG, SEMANTIC_WARNING_BG,
@@ -324,7 +325,7 @@ def append_item_master_rows(service, spreadsheet_id: str, rows: list[list]) -> N
         return
     service.spreadsheets().values().append(
         spreadsheetId=spreadsheet_id,
-        range=f"'품목마스터'!A{DATA_START_IDX + 1}",
+        range=f"'{ITEM_MASTER_TAB}'!A{DATA_START_IDX + 1}",
         valueInputOption="RAW",
         insertDataOption="INSERT_ROWS",
         body={"values": rows},
@@ -908,8 +909,8 @@ def main() -> int:
     service = build("sheets", "v4", credentials=creds)
 
     print("[runner] 품목마스터/이력 로드 중...")
-    master_headers = TABS["품목마스터"]["headers"]
-    master_rows = read_tab_rows(service, args.spreadsheet_id, "품목마스터")
+    master_headers = TABS[ITEM_MASTER_TAB]["headers"]
+    master_rows = read_tab_rows(service, args.spreadsheet_id, ITEM_MASTER_TAB)
     item_master = {
         r["품목코드"]: {"브랜드": r["브랜드"], "조달유형": r["조달유형"],
                        "리드타임": _to_number(r["리드타임(일)"]) if r["리드타임(일)"] else "",
