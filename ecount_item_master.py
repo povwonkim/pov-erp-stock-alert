@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""이카운트 재고변동표(또는 품목등록) 엑셀에서 실제 품목마스터(품목코드↔브랜드↔조달유형)를
-만들어 구글시트 `품목마스터` 탭에 반영한다.
+"""이카운트 재고변동표(또는 품목등록) 엑셀에서 실제 RAW_품목마스터(품목코드↔브랜드↔조달유형)를
+만들어 구글시트 `RAW_품목마스터` 탭에 반영한다.
 
 핵심 아이디어(2026-07-28 확인): 이카운트 브랜드코드(품목그룹2코드)의 앞 2글자가 국가코드다
 (KBP=KR013, HIGHTIDE=JP041, CAMBRIDGE IMPRINT=UK013 등). 이걸로 289개 브랜드를 사람이 일일이
@@ -22,7 +22,7 @@
   # 1) 분류 리포트만 보기(시트에 아무것도 안 씀)
   python3 ecount_item_master.py --source 재고변동표.xlsx --report-only
 
-  # 2) 구글시트 품목마스터 탭에 실제 반영 (서버에서, gmail_token.json 필요)
+  # 2) 구글시트 RAW_품목마스터 탭에 실제 반영 (서버에서, gmail_token.json 필요)
   .venv/bin/python ecount_item_master.py --source 재고변동표.xlsx --spreadsheet-id <ID>
 """
 from __future__ import annotations
@@ -141,7 +141,7 @@ def load_rows(path: Path) -> list[dict]:
 
 
 def build_item_master(rows: list[dict]) -> tuple[list[list], dict, int]:
-    """품목마스터 행(품목마스터 탭 헤더 순서: 품목코드,품목명,브랜드,브랜드코드,조달유형,리드타임(일),갱신일)
+    """RAW_품목마스터 행(RAW_품목마스터 탭 헤더 순서: 품목코드,품목명,브랜드,브랜드코드,조달유형,리드타임(일),갱신일)
     과 브랜드별 분류 리포트를 만든다. EXCLUDED_BRANDS는 아예 제외한다."""
     today = date.today().isoformat()
     out = []
@@ -172,7 +172,7 @@ def print_report(brand_stats: dict, excluded_count: int) -> None:
         dominant = max(s["types"], key=s["types"].get)
         by_type.setdefault(dominant, []).append((b, s))
 
-    print("\n[품목마스터] 조달유형별 브랜드/품목 집계:")
+    print("\n[RAW_품목마스터] 조달유형별 브랜드/품목 집계:")
     for t in ("자체제작", "국내사입", "국내위탁", "해외수입"):
         items = by_type.get(t, [])
         total_skus = sum(s["count"] for _, s in items)
@@ -182,14 +182,14 @@ def print_report(brand_stats: dict, excluded_count: int) -> None:
 
     mixed = [(b, s) for b, s in brand_stats.items() if len(s["types"]) > 1]
     if mixed:
-        print(f"\n[품목마스터] 브랜드 내 SKU별로 조달유형이 갈리는 것 {len(mixed)}개:")
+        print(f"\n[RAW_품목마스터] 브랜드 내 SKU별로 조달유형이 갈리는 것 {len(mixed)}개:")
         for b, s in mixed:
             detail = ", ".join(f"{t}:{c}개" for t, c in s["types"].items())
             print(f"  - {b!r}: {detail}")
 
     ambiguous = [(b, s) for b, s in brand_stats.items() if not s["certain"]]
     if ambiguous:
-        print(f"\n[품목마스터] ⚠️ 확인 필요(애매한 숫자코드 브랜드) {len(ambiguous)}개:")
+        print(f"\n[RAW_품목마스터] ⚠️ 확인 필요(애매한 숫자코드 브랜드) {len(ambiguous)}개:")
         for b, s in sorted(ambiguous, key=lambda x: -x[1]["count"]):
             dominant = max(s["types"], key=s["types"].get)
             print(f"  - {b!r} (코드 {s['code']}, 품목 {s['count']}개) → 임시: {dominant}")
@@ -207,35 +207,35 @@ def write_to_sheet(spreadsheet_id: str, rows: list[list]) -> None:
         creds.refresh(Request())
     service = build("sheets", "v4", credentials=creds)
 
-    # 기존 데이터(5행부터) 지우고 새로 쓴다 — 품목마스터는 매번 통째로 재생성하는 게 안전
+    # 기존 데이터(5행부터) 지우고 새로 쓴다 — RAW_품목마스터는 매번 통째로 재생성하는 게 안전
     # (신상품 추가/브랜드 재분류가 매번 반영되게).
     service.spreadsheets().values().batchClear(
-        spreadsheetId=spreadsheet_id, body={"ranges": [f"'품목마스터'!A{DATA_START_IDX + 1}:Z100000"]}
+        spreadsheetId=spreadsheet_id, body={"ranges": [f"'RAW_품목마스터'!A{DATA_START_IDX + 1}:Z100000"]}
     ).execute()
     service.spreadsheets().values().update(
         spreadsheetId=spreadsheet_id,
-        range=f"'품목마스터'!A{DATA_START_IDX + 1}",
+        range=f"'RAW_품목마스터'!A{DATA_START_IDX + 1}",
         valueInputOption="RAW",
         body={"values": rows},
     ).execute()
-    print(f"[품목마스터] 구글시트 반영 완료: {len(rows)}행")
+    print(f"[RAW_품목마스터] 구글시트 반영 완료: {len(rows)}행")
 
 
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--source", required=True, help="재고변동표(집계) 엑셀 경로")
-    ap.add_argument("--spreadsheet-id", help="지정하면 구글시트 품목마스터 탭에 반영")
+    ap.add_argument("--spreadsheet-id", help="지정하면 구글시트 RAW_품목마스터 탭에 반영")
     ap.add_argument("--report-only", action="store_true", help="시트에 안 쓰고 분류 리포트만 출력")
     args = ap.parse_args()
 
     rows = load_rows(Path(args.source))
-    print(f"[품목마스터] {len(rows)}개 품목 로드")
+    print(f"[RAW_품목마스터] {len(rows)}개 품목 로드")
 
     master_rows, brand_stats, excluded_count = build_item_master(rows)
     print_report(brand_stats, excluded_count)
 
     if args.report_only or not args.spreadsheet_id:
-        print("\n[품목마스터] --report-only 또는 --spreadsheet-id 미지정 — 시트에 쓰지 않음")
+        print("\n[RAW_품목마스터] --report-only 또는 --spreadsheet-id 미지정 — 시트에 쓰지 않음")
         return 0
 
     write_to_sheet(args.spreadsheet_id, master_rows)

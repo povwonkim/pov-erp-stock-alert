@@ -4,7 +4,7 @@
 흐름:
   1. 이카운트 창고별재고현황 API로 오늘 시점 재고 스냅샷 조회 (전체 창고, RAW 그대로 저장)
   2. Gmail에서 이카운트 "판매현황" 자동발송 이메일의 첨부 엑셀을 받아 파싱 (전체 창고, RAW 그대로 저장)
-  3. 두 원본을 오프라인 4개 창고로 필터링 + 품목마스터(브랜드/조달유형/리드타임) 조인
+  3. 두 원본을 오프라인 4개 창고로 필터링 + RAW_품목마스터(브랜드/조달유형/리드타임) 조인
   4. 일별재고이력에서 전일 데이터를 읽어 전일재고·품절경과일 연속성 계산, 입고수량 역산
   5. DOI·상태·우선순위·조치방안 계산 (README "DOI 기반 우선순위 체계" 참고)
   6. 일별재고이력에 오늘자 행 누적, 3층 결과물 탭(디자인팀_발주필요/관리팀_전체재고/악성재고/
@@ -285,15 +285,15 @@ def append_history_rows(service, spreadsheet_id: str, target_date_str: str, new_
 
 
 def auto_register_new_items(item_master: dict, sales_raw: list[dict], target_date: date) -> list[list]:
-    """오늘 판매현황에 새로 나타난(품목마스터에 없는) 품목코드를 자동 등록한다.
+    """오늘 판매현황에 새로 나타난(RAW_품목마스터에 없는) 품목코드를 자동 등록한다.
 
     조달유형은 SKU가 아니라 브랜드 단위 속성이므로(README 참고), 같은 브랜드의 기존
-    품목마스터 항목에서 다수결로 물려받는다 — 사람이 매번 새 상품을 등록할 필요가 없다.
+    RAW_품목마스터 항목에서 다수결로 물려받는다 — 사람이 매번 새 상품을 등록할 필요가 없다.
     브랜드 자체가 처음 등장하는 경우만 '미분류'로 남아 사람이 한 번 확인하면 되고, 그 뒤로는
     같은 브랜드의 모든 신상품에 자동 적용된다(이카운트 원본에 브랜드코드가 없어 국가코드
     휴리스틱은 못 쓰지만, 브랜드명 다수결만으로 충분).
 
-    item_master는 in-place로 갱신되어 오늘 계산부터 바로 반영되고, 반환값은 품목마스터
+    item_master는 in-place로 갱신되어 오늘 계산부터 바로 반영되고, 반환값은 RAW_품목마스터
     시트에 추가로 써야 할 행이다(기존 행은 건드리지 않고 append).
     """
     brand_type_votes: dict[str, dict[str, int]] = {}
@@ -327,7 +327,7 @@ def append_item_master_rows(service, spreadsheet_id: str, rows: list[list]) -> N
         return
     service.spreadsheets().values().append(
         spreadsheetId=spreadsheet_id,
-        range=f"'품목마스터'!A{DATA_START_IDX + 1}",
+        range=f"'RAW_품목마스터'!A{DATA_START_IDX + 1}",
         valueInputOption="RAW",
         insertDataOption="INSERT_ROWS",
         body={"values": rows},
@@ -420,7 +420,7 @@ def build_daily_rows(target_date: date, inventory_raw: list[dict], sales_raw: li
     for r in history:
         hist_by_item.setdefault(r["품목코드"], {})[r["날짜"]] = r
 
-    # 처리 대상 품목 = 품목마스터 전체(관리팀 전체 그림) ∪ 오늘 재고/판매에 등장한 품목(미분류 포함).
+    # 처리 대상 품목 = RAW_품목마스터 전체(관리팀 전체 그림) ∪ 오늘 재고/판매에 등장한 품목(미분류 포함).
     all_codes = set(item_master) | set(total_by_item) | set(out_by_item)
 
     history_rows: list[list] = []
@@ -936,9 +936,9 @@ def main() -> int:
     from googleapiclient.discovery import build
     service = build("sheets", "v4", credentials=creds)
 
-    print("[runner] 품목마스터/이력 로드 중...")
-    master_headers = TABS["품목마스터"]["headers"]
-    master_rows = read_tab_rows(service, args.spreadsheet_id, "품목마스터")
+    print("[runner] RAW_품목마스터/이력 로드 중...")
+    master_headers = TABS["RAW_품목마스터"]["headers"]
+    master_rows = read_tab_rows(service, args.spreadsheet_id, "RAW_품목마스터")
     item_master = {
         r["품목코드"]: {"브랜드": r["브랜드"], "조달유형": r["조달유형"],
                        "리드타임": _to_number(r["리드타임(일)"]) if r["리드타임(일)"] else "",
@@ -946,13 +946,13 @@ def main() -> int:
         for r in master_rows if r["품목코드"]
     }
     history = read_tab_rows(service, args.spreadsheet_id, "일별재고이력")
-    print(f"[runner] 품목마스터 {len(item_master)}건, 이력 {len(history)}행 로드")
+    print(f"[runner] RAW_품목마스터 {len(item_master)}건, 이력 {len(history)}행 로드")
 
     new_master_rows = auto_register_new_items(item_master, sales_raw, target_date)
     if new_master_rows:
         unclassified = sum(1 for r in new_master_rows if r[4] == "미분류")
-        print(f"[runner] 품목마스터 신규 자동등록 {len(new_master_rows)}건"
-              + (f" (이 중 {unclassified}건은 새 브랜드라 미분류 — 품목마스터에서 조달유형 확인 필요)" if unclassified else ""))
+        print(f"[runner] RAW_품목마스터 신규 자동등록 {len(new_master_rows)}건"
+              + (f" (이 중 {unclassified}건은 새 브랜드라 미분류 — RAW_품목마스터에서 조달유형 확인 필요)" if unclassified else ""))
 
     result = build_daily_rows(target_date, inventory_raw, sales_raw, item_master, history)
     print(f"[runner] 계산 완료 — 일별이력 {len(result['history'])}건 / 디자인팀_발주필요 "
@@ -993,7 +993,7 @@ def main() -> int:
         style_total_row(service, args.spreadsheet_id, tab_id_by_title["샘플의심재고"], ncols=13, bg=TOTAL_ROW_BG_SAMPLE)
 
     if new_master_rows:
-        print("[runner] 품목마스터 신규 품목 반영 중...")
+        print("[runner] RAW_품목마스터 신규 품목 반영 중...")
         append_item_master_rows(service, args.spreadsheet_id, new_master_rows)
 
     print("[runner] 대시보드 반영 중...")

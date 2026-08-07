@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""품목마스터(구글시트, 사람이 방금 직접 고친 최신 상태)를 읽어서 brand_type_overrides.json
+"""RAW_품목마스터(구글시트, 사람이 방금 직접 고친 최신 상태)를 읽어서 brand_type_overrides.json
 갱신용 파일을 만든다(2026-08-06 — 사용자가 시트에서 대량으로 조달유형을 직접 고친 뒤,
 그걸 코드 쪽 brand_type_overrides.json에도 반영해서 앞으로 신상품에도 계속 적용되게
 해달라고 요청).
@@ -34,8 +34,8 @@ def main() -> int:
     from googleapiclient.discovery import build
     service = build("sheets", "v4", credentials=creds)
 
-    rows = read_tab_rows(service, args.spreadsheet_id, "품목마스터")
-    print(f"[sync] 품목마스터 {len(rows)}행 로드")
+    rows = read_tab_rows(service, args.spreadsheet_id, "RAW_품목마스터")
+    print(f"[sync] RAW_품목마스터 {len(rows)}행 로드")
 
     votes: dict[str, dict[str, int]] = {}
     for r in rows:

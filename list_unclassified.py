@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""품목마스터에서 조달유형="미분류"인 행을 뽑아서 보여주는 1회성 조회 스크립트.
+"""RAW_품목마스터에서 조달유형="미분류"인 행을 뽑아서 보여주는 1회성 조회 스크립트.
 
 사용법 (서버에서):
   .venv/bin/python list_unclassified.py --spreadsheet-id <ID>
@@ -20,7 +20,7 @@ def main() -> int:
     from googleapiclient.discovery import build
     service = build("sheets", "v4", credentials=creds)
 
-    rows = read_tab_rows(service, args.spreadsheet_id, "품목마스터")
+    rows = read_tab_rows(service, args.spreadsheet_id, "RAW_품목마스터")
     unclassified = [r for r in rows if r.get("조달유형") == "미분류"]
 
     print(f"미분류 {len(unclassified)}건")

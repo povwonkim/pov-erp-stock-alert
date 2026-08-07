@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""소계(합계) 행 오파싱으로 잘못 등록된 유령 품목을 품목마스터/일별재고이력에서 제거.
+"""소계(합계) 행 오파싱으로 잘못 등록된 유령 품목을 RAW_품목마스터/일별재고이력에서 제거.
 
 배경(2026-08-06): ecount_sales_scraper.py가 이카운트 판매현황 웹 표의 "소계" 행(라벨
 칸이 colspan으로 병합돼 있어 정상 품목 행보다 칸 수가 적음)을 정상 품목 행으로 오인해서,
@@ -53,9 +53,9 @@ def main() -> int:
     from googleapiclient.discovery import build
     service = build("sheets", "v4", credentials=creds)
 
-    # ---- 품목마스터 ----
-    master_headers = TABS["품목마스터"]["headers"]
-    master_rows = read_tab_rows(service, args.spreadsheet_id, "품목마스터")
+    # ---- RAW_품목마스터 ----
+    master_headers = TABS["RAW_품목마스터"]["headers"]
+    master_rows = read_tab_rows(service, args.spreadsheet_id, "RAW_품목마스터")
 
     def is_ghost(r: dict) -> bool:
         code = r["품목코드"] or ""
@@ -68,7 +68,7 @@ def main() -> int:
     ghost_codes = {r["품목코드"] for r in ghost_rows}
     kept_master = [r for r in master_rows if r["품목코드"] not in ghost_codes]
 
-    print(f"[cleanup] 품목마스터 {len(master_rows)}행 중 유령 품목 {len(ghost_rows)}개 발견")
+    print(f"[cleanup] RAW_품목마스터 {len(master_rows)}행 중 유령 품목 {len(ghost_rows)}개 발견")
     for r in ghost_rows[:10]:
         print(f"  - 품목코드={r['품목코드']!r} 품명={r['품목명']!r} 브랜드={r['브랜드']!r} 갱신일={r['갱신일']!r}")
     if len(ghost_rows) > 10:
@@ -89,9 +89,9 @@ def main() -> int:
         print("[cleanup] 지울 게 없음")
         return 0
 
-    replace_tab_rows(service, args.spreadsheet_id, "품목마스터",
+    replace_tab_rows(service, args.spreadsheet_id, "RAW_품목마스터",
                       [[r[h] for h in master_headers] for r in kept_master])
-    print("[cleanup] 품목마스터 정리 완료")
+    print("[cleanup] RAW_품목마스터 정리 완료")
 
     if ghost_hist:
         replace_tab_rows(service, args.spreadsheet_id, "일별재고이력",

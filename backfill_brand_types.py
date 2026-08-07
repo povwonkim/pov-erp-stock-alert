@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""brand_type_overrides.json 기준으로 품목마스터의 기존 행들 조달유형/리드타임을 일괄 수정.
+"""brand_type_overrides.json 기준으로 RAW_품목마스터의 기존 행들 조달유형/리드타임을 일괄 수정.
 
 ecount_item_master.py의 classify()/BRAND_OVERRIDES는 "새로 등록되는" 품목에만 적용되고,
-이미 품목마스터에 있는 기존 행은 자동으로 안 바뀐다 — brand_type_overrides.json을 고친
+이미 RAW_품목마스터에 있는 기존 행은 자동으로 안 바뀐다 — brand_type_overrides.json을 고친
 뒤에는 이 스크립트로 기존 행도 맞춰줘야 한다(2026-08-06, Travelers company/MD paper/
 SAILOR/KAWECO/MOLESKINE를 국내사입으로 확정하면서 도입).
 
@@ -30,9 +30,9 @@ def main() -> int:
     from googleapiclient.discovery import build
     service = build("sheets", "v4", credentials=creds)
 
-    headers = TABS["품목마스터"]["headers"]
-    rows = read_tab_rows(service, args.spreadsheet_id, "품목마스터")
-    print(f"[backfill] 품목마스터 {len(rows)}행 로드, brand_type_overrides.json {len(BRAND_OVERRIDES)}개 브랜드")
+    headers = TABS["RAW_품목마스터"]["headers"]
+    rows = read_tab_rows(service, args.spreadsheet_id, "RAW_품목마스터")
+    print(f"[backfill] RAW_품목마스터 {len(rows)}행 로드, brand_type_overrides.json {len(BRAND_OVERRIDES)}개 브랜드")
 
     today = date.today().isoformat()
     changed = 0
@@ -60,8 +60,8 @@ def main() -> int:
         print("[backfill] 바뀔 게 없어서 쓰지 않음")
         return 0
 
-    replace_tab_rows(service, args.spreadsheet_id, "품목마스터", out_rows)
-    print("[backfill] 품목마스터 반영 완료 — 다음 자동실행부터 리드타임/위험판정에도 반영됩니다.")
+    replace_tab_rows(service, args.spreadsheet_id, "RAW_품목마스터", out_rows)
+    print("[backfill] RAW_품목마스터 반영 완료 — 다음 자동실행부터 리드타임/위험판정에도 반영됩니다.")
     return 0
 
 
