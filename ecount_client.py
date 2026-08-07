@@ -230,6 +230,48 @@ class EcountClient:
         payload.update(extra)
         return self.call("InventoryBalance/GetListInventoryBalanceStatusByLocation", payload)
 
+    # 품목조회 API 경로 후보. OAPI V2 조회 API 4개 중 하나로 문서에 존재하는 것은 확인했으나
+    # (README '조회 API 전수 확인 결과'), 이 계정은 품목조회 인증이 안 되어 있어 실제 응답으로
+    # path를 확정하지 못했다. probe_item_list()로 후보를 하나씩 때려보고 되는 것을 찾는다.
+    ITEM_LIST_PATH_CANDIDATES = (
+        "InventoryBasic/GetBasicProductsList",
+        "InventoryBasic/GetBasicProduct",
+        "Inventory/GetBasicProductsList",
+        "AccountBasic/GetBasicProductsList",
+    )
+
+    def item_list(self, *, path: str = "", **extra) -> dict:
+        """품목등록 전량 조회.
+
+        이 시스템의 품목마스터가 '재고·판매에 등장한 품목'의 부산물이 아니라 '이카운트에
+        등록된 품목 전량'의 미러가 되려면 이 API가 있어야 한다. 재고현황 API는 해당 창고에
+        재고 기록이 있는 품목만 돌려주기 때문에, 등록만 되고 아직 안 움직인 신상품은 어떤
+        경로로도 안 잡힌다(2026-08-07 확인: 카페24에 있는데 시트에 없는 16건의 원인).
+
+        path를 안 주면 ITEM_LIST_PATH_CANDIDATES의 첫 번째를 쓴다. 확정되면 그 값을
+        기본값으로 올릴 것.
+        """
+        return self.call(path or self.ITEM_LIST_PATH_CANDIDATES[0], dict(extra))
+
+    def probe_item_list(self, **extra) -> tuple[str, dict]:
+        """품목조회 path 후보를 순서대로 호출해 처음 성공하는 것을 (path, 응답)으로 돌려준다.
+
+        조회 API는 종류당 1회/10분 제한이라(README 참고) 후보를 연달아 때리면 뒤쪽은
+        제한에 걸릴 수 있다. 그래서 실패 사유를 그대로 모아 마지막에 전부 보여준다 —
+        인증 문제인지 path 문제인지 전송기준 문제인지 구분할 수 있어야 하기 때문.
+        """
+        failures = []
+        for path in self.ITEM_LIST_PATH_CANDIDATES:
+            try:
+                return path, self.call(path, dict(extra))
+            except EcountError as exc:
+                failures.append(f"  {path}\n    → {exc}")
+        raise EcountError(
+            "품목조회 path 후보를 전부 실패했습니다. 이카운트 로그인 후 API 문서에서 정확한 "
+            "path를 확인하거나, Self-Customizing → 정보관리 → API 인증키발급에서 품목조회 "
+            "권한이 켜져 있는지 보세요.\n" + "\n".join(failures)
+        )
+
 
 def _dig(obj: Any, path: list[str]) -> Any:
     """중첩 dict에서 안전하게 값 꺼내기."""

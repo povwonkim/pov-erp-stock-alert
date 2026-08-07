@@ -124,8 +124,38 @@ def _clean(v) -> str:
     return (str(v).strip() if v is not None else "")
 
 
+def load_rows_from_api(rows: list[dict], brand_names: dict[str, str]) -> list[dict]:
+    """이카운트 품목조회 API 응답을 load_rows()와 같은 모양으로 바꾼다.
+
+    품목조회는 품목그룹2를 코드(CLASS_CD2)로만 주고 이름은 안 준다(README 확인). 브랜드명은
+    이미 시트에 쌓인 브랜드코드↔브랜드명 매핑에서 채우고, 처음 보는 코드는 빈 값으로 두어
+    classify()가 국가코드 규칙으로 판정하게 한다(그래도 안 되면 리포트에 애매값으로 뜬다).
+
+    필드명은 이카운트 OAPI 관례(PROD_CD/PROD_DES/CLASS_CD2)를 따랐지만 이 계정으로 실제
+    응답을 받아본 적이 없어 미검증이다. --from-api 첫 실행 때 --report-only로 확인할 것.
+    """
+    out = []
+    for r in rows:
+        code = _clean(r.get("PROD_CD") or r.get("품목코드"))
+        if not code:
+            continue
+        brand_code = _clean(r.get("CLASS_CD2") or r.get("브랜드코드"))
+        out.append({
+            "품목코드": code,
+            "품목명": _clean(r.get("PROD_DES") or r.get("품목명")),
+            "브랜드": brand_names.get(brand_code, ""),
+            "브랜드코드": brand_code,
+        })
+    return out
+
+
 def load_rows(path: Path) -> list[dict]:
-    """재고변동표(집계 모드) 엑셀에서 품목코드/품목명/브랜드/브랜드코드를 뽑는다.
+    """재고변동표(집계 모드) 또는 품목등록 엑셀에서 품목코드/품목명/브랜드/브랜드코드를 뽑는다.
+
+    재고변동표는 '그 기간에 재고가 움직인 품목'만 담고 있어서 이걸 소스로 쓰면 품목마스터가
+    이카운트 등록 품목의 부분집합이 된다(2026-08-07 확인: 카페24에 있는데 시트에 없는 16건).
+    품목등록 엑셀을 쓰면 전량이 들어온다 — 헤더만 맞으면 아래 로직은 그대로 동작한다.
+
     헤더 행 위치를 자동으로 찾는다(1행에 회사명/기간 안내가 있는 경우가 많음)."""
     wb = load_workbook(path, data_only=True)
     ws = wb.active
@@ -302,16 +332,70 @@ def write_to_sheet(spreadsheet_id: str, rows: list[list], *, force_reclassify: b
     print(f"[품목마스터] 구글시트 반영 완료: {len(rows)}행")
 
 
+def read_existing_rows(spreadsheet_id: str) -> list[list]:
+    """RAW_품목마스터 탭의 현재 내용을 읽는다 (브랜드코드↔브랜드명 매핑 씨앗 겸용)."""
+    from google.auth.transport.requests import Request
+    from google.oauth2.credentials import Credentials
+    from googleapiclient.discovery import build
+
+    from ecount_sheets_setup import _TOKEN_FILE, SCOPES, DATA_START_IDX, ITEM_MASTER_TAB
+
+    creds = Credentials.from_authorized_user_file(str(_TOKEN_FILE), SCOPES)
+    if creds.expired and creds.refresh_token:
+        creds.refresh(Request())
+    service = build("sheets", "v4", credentials=creds)
+    return service.spreadsheets().values().get(
+        spreadsheetId=spreadsheet_id,
+        range=f"'{ITEM_MASTER_TAB}'!A{DATA_START_IDX + 1}:G100000",
+    ).execute().get("values", [])
+
+
+def brand_names_from_rows(existing: list[list]) -> dict[str, str]:
+    """기존 시트 행에서 브랜드코드 → 브랜드명 매핑을 만든다. 품목조회 API가 코드만 주기 때문."""
+    names: dict[str, str] = {}
+    for r in existing:
+        if len(r) > 3 and _clean(r[3]) and _clean(r[2]):
+            names.setdefault(_clean(r[3]), _clean(r[2]))
+    return names
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--source", required=True, help="재고변동표(집계) 엑셀 경로")
-    ap.add_argument("--spreadsheet-id", help="지정하면 구글시트 품목마스터 탭에 반영")
+    ap.add_argument("--source", help="재고변동표/품목등록 엑셀 경로 (--from-api와 택일)")
+    ap.add_argument("--from-api", action="store_true",
+                    help="이카운트 품목조회 API로 등록 품목 전량을 받아온다 (--source와 택일)")
+    ap.add_argument("--api-path", default="",
+                    help="품목조회 API path를 직접 지정. 비우면 후보를 순서대로 시도")
+    ap.add_argument("--spreadsheet-id", help=f"지정하면 구글시트 품목마스터 탭에 반영")
     ap.add_argument("--report-only", action="store_true", help="시트에 안 쓰고 분류 리포트만 출력")
     ap.add_argument("--force-reclassify", action="store_true",
                     help="사람이 시트에서 고친 조달유형/리드타임까지 규칙값으로 덮어쓴다 (기본은 보존)")
     args = ap.parse_args()
 
-    rows = load_rows(Path(args.source))
+    if bool(args.source) == bool(args.from_api):
+        ap.error("--source 와 --from-api 중 정확히 하나를 지정하세요")
+    if args.from_api and not args.spreadsheet_id:
+        ap.error("--from-api는 브랜드명 매핑을 시트에서 읽어야 해서 --spreadsheet-id가 필요합니다")
+
+    if args.from_api:
+        from ecount_client import EcountClient
+
+        client = EcountClient()
+        if args.api_path:
+            resp = client.item_list(path=args.api_path)
+            print(f"[품목마스터] 품목조회 API 호출: {args.api_path}")
+        else:
+            path, resp = client.probe_item_list()
+            print(f"[품목마스터] 품목조회 API path 확인됨: {path} — 확정되면 기본값으로 올릴 것")
+        api_rows = resp.get("Data", {}).get("Result") or resp.get("Data") or []
+        if not isinstance(api_rows, list):
+            raise SystemExit(f"품목조회 응답에서 목록을 못 찾았습니다. 응답 키: {list(resp)}")
+        rows = load_rows_from_api(api_rows, brand_names_from_rows(read_existing_rows(args.spreadsheet_id)))
+        unnamed = sum(1 for r in rows if not r["브랜드"])
+        if unnamed:
+            print(f"[품목마스터] ⚠️ 브랜드명을 못 찾은 품목 {unnamed}건 — 처음 보는 브랜드코드입니다")
+    else:
+        rows = load_rows(Path(args.source))
     print(f"[품목마스터] {len(rows)}개 품목 로드")
 
     master_rows, brand_stats, excluded_count = build_item_master(rows)
