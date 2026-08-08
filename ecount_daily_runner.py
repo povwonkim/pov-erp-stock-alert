@@ -29,7 +29,7 @@ from pathlib import Path
 from openpyxl import load_workbook
 
 from ecount_client import EcountClient
-from ecount_item_master import EXCLUDED_BRANDS, EXCLUDED_ITEM_NAMES, LEADTIME_BY_TYPE
+from ecount_item_master import EXCLUDED_BRANDS, EXCLUDED_ITEM_NAMES, LEADTIME_BY_TYPE, LEGACY_BRANDS
 from ecount_sheets_setup import (
     TABS, OFFLINE_WAREHOUSES, OFFLINE_WAREHOUSE_CODES, DATA_START_IDX, _TOKEN_FILE, SCOPES,
     STATUS_COLOR_RULES, BANNER1_BG, BANNER_FG_LIGHT, BANNER3_BG, BANNER3_FG,
@@ -429,6 +429,7 @@ def build_daily_rows(target_date: date, inventory_raw: list[dict], sales_raw: li
     malstock_rows: list[list] = []
     maldead_rows: list[list] = []
     sample_rows: list[list] = []
+    legacy_rows: list[list] = []
 
     for code in sorted(all_codes):
         meta = item_master.get(code, {})
@@ -514,6 +515,19 @@ def build_daily_rows(target_date: date, inventory_raw: list[dict], sales_raw: li
         입고단가 = ITEM_COST_LOOKUP.get(code)
         재고금액 = round(재고 * 입고단가) if 입고단가 is not None else ""
 
+        # 구브랜드(더는 안 다루는 옛 브랜드) — 일별재고이력엔 정상 기록되지만(위에서 이미
+        # append됨), 관리팀_전체재고/디자인팀_발주필요/악성재고/악성품절/샘플의심재고 같은
+        # 일반 운영 탭엔 안 올린다. 재고가 남아있으면(=아직 처리 안 된 방치 자산) 별도
+        # "구브랜드_방치재고" 탭에만 뽑는다(2026-08-07 사용자 확정).
+        if 브랜드 in LEGACY_BRANDS:
+            if 재고 > 0:
+                legacy_rows.append([
+                    브랜드, code, 품목명, 조달유형, 재고, 최근판매일 or "", 미판매경과일,
+                    입고단가 if 입고단가 is not None else "", 재고금액,
+                    "구브랜드 재고 — 처리 필요(폐기/판매/재확인)", "",
+                ])
+            continue
+
         # ---- 3층 결과물 라우팅 ----
         # 디자인팀_발주필요는 "제작(자체제작) 발주"만 다루므로 조달유형이 자체제작인 품목만
         # 노출한다(2026-07-28 사용자 확정 — 국내사입/해외수입은 디자인팀이 아니라 관리팀 소관).
@@ -580,10 +594,12 @@ def build_daily_rows(target_date: date, inventory_raw: list[dict], sales_raw: li
     malstock_rows.sort(key=lambda r: -(r[7] if isinstance(r[7], (int, float)) else -1))
     maldead_rows.sort(key=lambda r: -(r[8] or 0))            # 품절경과일 내림차순
     sample_rows.sort(key=lambda r: -(r[6] or 0))              # 미판매(일) 내림차순
+    legacy_rows.sort(key=lambda r: -(r[8] if isinstance(r[8], (int, float)) else -1))  # 재고금액 내림차순
 
     return {
         "history": history_rows, "design": design_rows, "mgmt": mgmt_rows,
         "malstock": malstock_rows, "maldead": maldead_rows, "sample": sample_rows,
+        "legacy": legacy_rows,
     }
 
 
@@ -961,7 +977,7 @@ def main() -> int:
     print(f"[runner] 계산 완료 — 일별이력 {len(result['history'])}건 / 디자인팀_발주필요 "
           f"{len(result['design'])}건 / 관리팀_전체재고 {len(result['mgmt'])}건 / "
           f"악성재고 {len(result['malstock'])}건 / 악성품절 {len(result['maldead'])}건 / "
-          f"샘플의심재고 {len(result['sample'])}건")
+          f"샘플의심재고 {len(result['sample'])}건 / 구브랜드_방치재고 {len(result['legacy'])}건")
 
     if args.dry_run:
         print("[runner] --dry-run — 시트에 쓰지 않음")
@@ -984,6 +1000,7 @@ def main() -> int:
     replace_tab_rows(service, args.spreadsheet_id, "악성품절", result["maldead"])
     replace_tab_rows(service, args.spreadsheet_id, "샘플의심재고",
                       with_money_total_row(result["sample"], money_idx=10, ncols=13))
+    replace_tab_rows(service, args.spreadsheet_id, "구브랜드_방치재고", result["legacy"])
     write_status_distribution_banner(service, args.spreadsheet_id, result["mgmt"])
 
     tab_meta = service.spreadsheets().get(
