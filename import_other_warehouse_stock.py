@@ -66,9 +66,15 @@ def main() -> int:
         wh_qtys = it["창고별재고"]
         row = [it["브랜드"], it["품목코드"], it["품명"]]
         row += [wh_qtys.get(wh, "") for wh in warehouses]
-        row += [it["재고수량"], it["바코드"], it["재고보유월수"], "", ""]
+        row += [
+            it["재고수량"],
+            it["입고단가"] if it["입고단가"] is not None else "",
+            it["재고금액"] if it["재고금액"] is not None else "",
+            it["바코드"], it["재고보유월수"], "", "",
+        ]
         rows.append(row)
-    rows.sort(key=lambda r: -r[len(warehouses) + 3])  # 재고수량 내림차순
+    QTY_COL_IDX = len(warehouses) + 3  # 브랜드/품목코드/품명(3) + 창고별(N) 다음이 재고수량
+    rows.sort(key=lambda r: -r[QTY_COL_IDX])  # 재고수량 내림차순
 
     assert len(stock_headers) == len(rows[0]) if rows else True
     replace_tab_rows(service, args.spreadsheet_id, "기타창고_재고현황", rows)
