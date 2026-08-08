@@ -30,15 +30,48 @@ from datetime import date
 from pathlib import Path
 
 from ecount_daily_runner import _load_creds, read_tab_rows, append_item_master_rows
-from ecount_item_master import classify, LEADTIME_BY_TYPE
+from ecount_item_master import classify, LEADTIME_BY_TYPE, EXCLUDED_BRANDS
 
 REGISTRY_PATH = Path(__file__).parent / "one_time_seed_2026-07-30" / "full_item_registry_2026-08-07.json"
+VALID_TYPES = ["자체제작", "국내사입", "국내위탁", "해외수입"]
+
+
+def _write_uncertain_review(uncertain: list[tuple[str, str]], out_path: str) -> None:
+    """새 브랜드(brand_type_overrides.json에 없어서 조달유형이 확실치 않은 것)를 검토용
+    엑셀로 뽑는다 — export_brand_types.py와 같은 포맷(조달유형(수정) 칸에 드롭다운)이라
+    다 채운 뒤 brand_type_overrides.json에 그대로 반영하고 backfill_brand_types.py로
+    한 번에 적용하면 된다."""
+    from openpyxl import Workbook
+    from openpyxl.worksheet.datavalidation import DataValidation
+
+    by_brand: dict[str, int] = {}
+    for brand, _code in uncertain:
+        by_brand[brand] = by_brand.get(brand, 0) + 1
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "새 브랜드 검토"
+    ws.append(["브랜드", "품목수(임시 해외수입 적용됨)", "조달유형(수정)", "메모"])
+    for brand in sorted(by_brand, key=lambda b: -by_brand[b]):
+        ws.append([brand, by_brand[brand], "", ""])
+
+    dv = DataValidation(type="list", formula1=f'"{",".join(VALID_TYPES)}"', allow_blank=True)
+    dv.error = "자체제작/국내사입/국내위탁/해외수입 중 하나만 선택하세요"
+    dv.prompt = "임시로 해외수입이 들어가 있습니다. 맞으면 비워두고, 다르면 여기서 고르세요."
+    ws.add_data_validation(dv)
+    dv.add(f"C2:C{ws.max_row}")
+
+    for col, width in zip("ABCD", [28, 24, 16, 30]):
+        ws.column_dimensions[col].width = width
+    ws.freeze_panes = "A2"
+    wb.save(out_path)
 
 
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--spreadsheet-id", required=True)
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--uncertain-out", default="uncertain_brand_review.xlsx")
     args = ap.parse_args()
 
     registry = json.loads(REGISTRY_PATH.read_text(encoding="utf-8"))
@@ -55,12 +88,16 @@ def main() -> int:
     today = date.today().isoformat()
     new_rows: list[list] = []
     uncertain: list[tuple[str, str]] = []  # (브랜드, 품목코드) — 새 브랜드라 확실치 않음
+    excluded_count = 0
 
     for item in registry:
         code = item["품목코드"]
         if code in existing_codes:
             continue
         brand = item["브랜드"]
+        if brand in EXCLUDED_BRANDS:
+            excluded_count += 1
+            continue
         name = item["품목명"]
         if item.get("사용구분") == "NO" and "(단종)" not in name:
             name = f"{name} (단종)"
@@ -70,7 +107,7 @@ def main() -> int:
         leadtime = LEADTIME_BY_TYPE.get(ptype, "")
         new_rows.append([code, name, brand, "", ptype, leadtime, today])
 
-    print(f"[import] 새로 추가할 품목: {len(new_rows)}건")
+    print(f"[import] 새로 추가할 품목: {len(new_rows)}건 (제외 브랜드라 안 넣은 것: {excluded_count}건)")
     if uncertain:
         uniq_brands = sorted({b for b, _ in uncertain})
         print(f"[import] ⚠️ 새 브랜드라 조달유형 확실치 않음(임시 해외수입) — 브랜드 {len(uniq_brands)}개, 품목 {len(uncertain)}건:")
@@ -78,6 +115,8 @@ def main() -> int:
             print(f"  - {b!r}")
         if len(uniq_brands) > 30:
             print(f"  ... 외 {len(uniq_brands) - 30}개 브랜드")
+        _write_uncertain_review(uncertain, args.uncertain_out)
+        print(f"[import] 검토용 엑셀 저장: {args.uncertain_out} — 조달유형(수정) 칸 채워서 다시 주시면 반영합니다.")
 
     if args.dry_run:
         print("[import] --dry-run: 시트에 쓰지 않음")
