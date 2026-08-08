@@ -430,6 +430,7 @@ def build_daily_rows(target_date: date, inventory_raw: list[dict], sales_raw: li
     maldead_rows: list[list] = []
     sample_rows: list[list] = []
     legacy_rows: list[list] = []
+    discontinued_rows: list[list] = []
 
     for code in sorted(all_codes):
         meta = item_master.get(code, {})
@@ -438,14 +439,15 @@ def build_daily_rows(target_date: date, inventory_raw: list[dict], sales_raw: li
         리드타임 = meta.get("리드타임", "")
         품목명 = name_by_item.get(code, meta.get("품목명", ""))
 
-        # 단종/제외 품목 — 이 시스템 어디에도(RAW_일별재고이력 포함) 아예 안 남긴다(2026-08-04
-        # 사용자 확정: "시즌아이템이라서 이제는 단종되거나 여기에 두어도 의미없는 건 제외").
-        # 품목명에 "(단종)"이 붙어있으면 이카운트 쪽에서 이미 단종 처리한 것으로 보고 제외.
-        # EXCLUDED_BRANDS(ARCHIVE. Object/PointofView)는 2026-07-28에 이미 제외하기로
-        # 확정했었는데 이 파이프라인엔 안 걸려있었던 걸 여기서 같이 바로잡는다.
-        # 특정 품목 개별 제외(작년 시즌 아이템 등, 재입고 안 함 — 2026-08-04 사용자 확인).
-        # 품목명 앞뒤 공백 차이로 안 걸러지는 일이 없게 strip 비교.
-        if "(단종)" in 품목명 or 브랜드 in EXCLUDED_BRANDS or 품목명.strip() in EXCLUDED_ITEM_NAMES:
+        # 완전 제외 품목 — 이 시스템 어디에도(RAW_일별재고이력 포함) 아예 안 남긴다.
+        # EXCLUDED_BRANDS(ARCHIVE. Object/PointofView/POP-UP)는 POV 소유 자산이 아니라서
+        # 애초에 추적 대상이 아니고, EXCLUDED_ITEM_NAMES는 특정 품목 개별 제외(작년 시즌
+        # 아이템 등, 재입고 안 함 — 2026-08-04 사용자 확인). 품목명 앞뒤 공백 차이로 안
+        # 걸러지는 일이 없게 strip 비교.
+        # 주의: "(단종)" 품목명은 여기서 걸러내지 않는다 — 예전엔 여기서 통째로 제외했는데,
+        # 그러면 재고가 남아있어도 어디에도 안 보이는 문제가 있었다(2026-08-08 확인, 187건
+        # 발견). 아래에서 이력은 정상 기록하고 별도 "단종품목_재고현황"으로 라우팅한다.
+        if 브랜드 in EXCLUDED_BRANDS or 품목명.strip() in EXCLUDED_ITEM_NAMES:
             continue
 
         재고 = total_by_item.get(code, 0.0)
@@ -528,6 +530,17 @@ def build_daily_rows(target_date: date, inventory_raw: list[dict], sales_raw: li
                 ])
             continue
 
+        # 단종 품목(브랜드는 취급 중이지만 이 품목만 단종) — 구브랜드_방치재고와 같은 패턴으로
+        # 일반 운영 탭엔 안 올리고, 재고 남은 것만 "단종품목_재고현황"에 뽑는다.
+        if "(단종)" in 품목명:
+            if 재고 > 0:
+                discontinued_rows.append([
+                    브랜드, code, 품목명, 조달유형, 재고, 최근판매일 or "", 미판매경과일,
+                    입고단가 if 입고단가 is not None else "", 재고금액,
+                    "단종 재고 — 처리 필요(폐기/판매/재확인)", "",
+                ])
+            continue
+
         # ---- 3층 결과물 라우팅 ----
         # 디자인팀_발주필요는 "제작(자체제작) 발주"만 다루므로 조달유형이 자체제작인 품목만
         # 노출한다(2026-07-28 사용자 확정 — 국내사입/해외수입은 디자인팀이 아니라 관리팀 소관).
@@ -595,11 +608,12 @@ def build_daily_rows(target_date: date, inventory_raw: list[dict], sales_raw: li
     maldead_rows.sort(key=lambda r: -(r[8] or 0))            # 품절경과일 내림차순
     sample_rows.sort(key=lambda r: -(r[6] or 0))              # 미판매(일) 내림차순
     legacy_rows.sort(key=lambda r: -(r[8] if isinstance(r[8], (int, float)) else -1))  # 재고금액 내림차순
+    discontinued_rows.sort(key=lambda r: -(r[8] if isinstance(r[8], (int, float)) else -1))  # 재고금액 내림차순
 
     return {
         "history": history_rows, "design": design_rows, "mgmt": mgmt_rows,
         "malstock": malstock_rows, "maldead": maldead_rows, "sample": sample_rows,
-        "legacy": legacy_rows,
+        "legacy": legacy_rows, "discontinued": discontinued_rows,
     }
 
 
@@ -977,7 +991,8 @@ def main() -> int:
     print(f"[runner] 계산 완료 — 일별이력 {len(result['history'])}건 / 디자인팀_발주필요 "
           f"{len(result['design'])}건 / 관리팀_전체재고 {len(result['mgmt'])}건 / "
           f"악성재고 {len(result['malstock'])}건 / 악성품절 {len(result['maldead'])}건 / "
-          f"샘플의심재고 {len(result['sample'])}건 / 구브랜드_방치재고 {len(result['legacy'])}건")
+          f"샘플의심재고 {len(result['sample'])}건 / 구브랜드_방치재고 {len(result['legacy'])}건 / "
+          f"단종품목_재고현황 {len(result['discontinued'])}건")
 
     if args.dry_run:
         print("[runner] --dry-run — 시트에 쓰지 않음")
@@ -1001,6 +1016,7 @@ def main() -> int:
     replace_tab_rows(service, args.spreadsheet_id, "샘플의심재고",
                       with_money_total_row(result["sample"], money_idx=10, ncols=13))
     replace_tab_rows(service, args.spreadsheet_id, "구브랜드_방치재고", result["legacy"])
+    replace_tab_rows(service, args.spreadsheet_id, "단종품목_재고현황", result["discontinued"])
     write_status_distribution_banner(service, args.spreadsheet_id, result["mgmt"])
 
     tab_meta = service.spreadsheets().get(
