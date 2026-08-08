@@ -29,7 +29,7 @@ from pathlib import Path
 from openpyxl import load_workbook
 
 from ecount_client import EcountClient
-from ecount_item_master import EXCLUDED_BRANDS, EXCLUDED_ITEM_NAMES, LEADTIME_BY_TYPE, LEGACY_BRANDS
+from ecount_item_master import EXCLUDED_BRANDS, EXCLUDED_ITEM_NAMES, LEADTIME_BY_TYPE, OLD_BRANDS
 from ecount_sheets_setup import (
     TABS, OFFLINE_WAREHOUSES, OFFLINE_WAREHOUSE_CODES, DATA_START_IDX, _TOKEN_FILE, SCOPES,
     STATUS_COLOR_RULES, BANNER1_BG, BANNER_FG_LIGHT, BANNER3_BG, BANNER3_FG,
@@ -519,7 +519,7 @@ def build_daily_rows(target_date: date, inventory_raw: list[dict], sales_raw: li
         # append됨), 관리팀_전체재고/디자인팀_발주필요/악성재고/악성품절/샘플의심재고 같은
         # 일반 운영 탭엔 안 올린다. 재고가 남아있으면(=아직 처리 안 된 방치 자산) 별도
         # "구브랜드_방치재고" 탭에만 뽑는다(2026-08-07 사용자 확정).
-        if 브랜드 in LEGACY_BRANDS:
+        if 브랜드 in OLD_BRANDS:
             if 재고 > 0:
                 legacy_rows.append([
                     브랜드, code, 품목명, 조달유형, 재고, 최근판매일 or "", 미판매경과일,

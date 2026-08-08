@@ -62,7 +62,7 @@ EXCLUDED_BRANDS = {"ARCHIVE. Object", "PointofView", "POP-UP"}
 # "구브랜드_방치재고" 탭에 별도로 뽑아서 처리 대상으로 계속 보이게 한다(ecount_daily_runner.py
 # build_daily_rows 참고). 관리팀_전체재고/디자인팀_발주필요 등 일반 운영 탭에는 안 뜬다.
 # OTS: 전량 폐기했는데도 재고가 남아있다면 그 자체가 문제(실물 없는데 시스템엔 남아있다는 뜻).
-LEGACY_BRANDS = {"OTS"}
+OLD_BRANDS = {"OTS"}
 
 # 브랜드 전체는 아니고 특정 품목만 제외 — 작년 시즌 아이템이라 재입고 안 함(2026-08-04
 # 사용자 확인). 이카운트 품목명에 "(단종)"이 안 붙어있는 것들이라 브랜드/명칭 규칙으로는
